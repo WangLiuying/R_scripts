@@ -1,0 +1,276 @@
+---
+title: "WordSeg_Ch"
+author: "王柳盈"
+date: "2017年7月7日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#安装
+```{r,eval=F}
+setwd("C:/Users/River/Desktop/text_mining_lesson")
+# library(devtools)
+# install_github("qinwf/jiebaRD")
+# install_github("qinwf/jiebaR")
+library("jiebaR")
+```
+
+#中文分词需要考虑的问题
+1. 分词原理？
+2. 用户词典构建和停止词等
+
+#jiebaR核心代码
+
+最常用以及最基本的功能就是分词，我们先来看看效果
+```{r}
+library(jiebaR)
+test <- c("JiebaR组件包用于中文分词","效果强大，谁用谁知道")
+device <- worker()
+segment(code = test,jiebar = device)
+device$bylines=T 
+segment(code=test,jiebar=device)
+device$symbol=T
+segment(code=test,jiebar=device)
+```
+除了默认的分词器外还有词性标记器、关键字提取器、simhash摘要器模式。
+```
+worker(type = "mix", dict = DICTPATH, hmm = HMMPATH, user = USERPATH,
+       idf = IDFPATH, stop_word = STOPPATH, write = T, qmax = 20, topn = 5,
+       encoding = "UTF-8", detect = T, symbol = F, lines = 1e+05,
+       output = NULL, bylines = F, user_weight = "max")
+```
+#中文分词原理介绍
+
+```{r}
+###########################################
+#系统词典
+readLines(DICTPATH,5,encoding = "UTF-8") #词，词频，词性标记
+readLines(USERPATH,5,encoding="UTF-8") #仅有词，亦可词+词性标记
+readLines(IDFPATH,5,encoding="UTF-8") #词+tf-idf score
+```
+
+
+#各种模式
+
+* mp（最大概率模型）- 基于词典和词频
+
+* hmm（HMM模型）- 基于 HMM 模型，可以发现词典中没有的词
+
+* mix（混合模型）- 先用 mp 分，mp 分完调用 hmm 再来把剩余的可能成词的单字分出来。
+
+* query（索引模型）- mix 基础上，对大于一定长度的词再进行一次切分。
+
+* tag（标记模型）- 词性标记，基于词典的
+
+* keywords（关键词模型）- tf-idf 抽 关键词
+
+* simhash（Simhash 模型） - 在关键词的基础上计算 simhash
+
+```{r}
+mix <- worker(type="mix")
+full <- worker(type="full")
+mp <- worker(type="mp")
+query <- worker(type="query")
+test <- "我在厦门大学经济学院WISERCLUB举办的暑期数据科学训练营学习文本挖掘"
+segment(test,mix)#精确模式+HMM模式
+segment(test,full)#全切分模式
+segment(test,mp)#精确模式
+segment(test,query)#索引模式
+```
+
+其它模式：
+```{r}
+test <- "我想吃沙茶面"
+#词性标注
+device=worker("tag")
+(test_tag <- tagging(test,device))
+#another way
+device=worker(bylines = T)
+test_tag <- segment(test,device)
+vector_tag(unlist(test_tag),device)
+###############################################
+#keywords提取器
+#?tf-idf计算方法
+test <- c("一切都会慢慢慢慢慢慢好起来的","人生就是不停地起起落落落落落落落","事情总会一件一件一件一件一件做完的")
+device_keyword <- worker(type="keywords",topn=2,bylines = T,qmax=5)
+lapply(test,keywords,device_keyword) #注，keywords的输入是！一个！字符串
+#########################################
+#计算idf
+test
+device$bylines=T
+(test_tfidf <- segment(test,device))
+temp=tempfile()
+get_idf(test_tfidf,path = temp)
+readLines(temp,encoding="UTF-8")
+
+#############################################
+#simhash摘要器
+test <- c("我想吃重庆火锅。","我想吃麻辣小龙虾。")
+device_simhash=worker(type="simhash",topn=3)
+(l <- simhash(test[1],device_simhash))
+(r <- simhash(test[2],device_simhash))
+tobin(l$simhash);tobin(r$simhash)
+distance(test[1],test[2],device_simhash)
+```
+
+#中文案例应用
+
+取出待用数据
+```{r}
+library(data.table)
+comment_raw <- fread("comments.csv",encoding = "UTF-8")
+str(comment_raw)
+cm <- unlist(comment_raw[,"comment"])
+index <- which(nchar(cm)!=0)
+cm <- cm[index]
+```
+
+制作用户词典
+```{r}
+library(cidian)
+decode_scel(scel ="饮食大全【官方推荐】.scel",output="food_user.txt")
+```
+
+stopword制作：
+
+词库的制作直接影响到分词效果，非常关键，往往是一个反复的过程。
+
+```{r}
+library(jiebaR)
+device <- worker(type = "mix",user = "food_user.txt",stop_word = "chinese_stopword.txt",
+                 bylines=T)
+seg <- segment(cm,device)
+seg[[15]]
+```
+
+#形成dtm
+
+tm包在处理中文编码时有点小bug，text2vec组件包相对来说做得更好。且text2vec采用了迭代器和惰性求值机制。
+```{r}
+library(text2vec)
+#help(package="text2vec")
+```
+核心机制：
+
+1. 使用itoken定义一个切分器
+```
+it = itoken(iterable=文档列表, preprocessor = 预处理function,
+  tokenizer = 切分function, progressbar = T, ...)
+```
+实际操作时，会对文档列表中的每一项先调用preprocessor预处理，再用tokenizer进行切分，最后逐个文档收集统计。
+
+2. 用create_vocabulary得到词汇表，vocab_vectorizer加载词汇表
+```
+word_dict <- create_vocabulary(it)
+word_dict$vocab
+vectorizer = vocab_vectorizer(word_dict)
+```
+
+3. 创建dtm
+```
+dtm= create_dtm(it, vectorizer)
+```
+
+
+
+```{r}
+it <- itoken(iterable = seg)
+#我们已经进行了去停止词和文档切分，所以不需要额外的preprocessor&tokenizer
+vocab <- create_vocabulary(it)
+vectorizer <- vocab_vectorizer(vocab)
+corpus <- create_corpus(it,vectorizer)
+vocab$vocab
+dtm <- corpus$get_dtm()
+dim(dtm)
+dtm[1:20,2500:2530]
+#找了半天。。。都是空的orz
+
+#tfidf模型
+dtm_tfidf <- TfIdf$new()
+dtm_tfidf$fit(dtm)
+dtm_tfidf$transform(dtm)
+```
+
+
+
+#作词云
+
+新版本wordcloud2添加了自定义词云形状功能
+```{r}
+#devtools::install_github("lchiffon/wordcloud2") 
+```
+
+```{r}
+library(wordcloud2)
+demoFreq
+```
+demoFreq是wordcloud2示例格式，我们需要把词频数据整理成同上所示。
+```{r}
+# wordfreq <- data.frame(word=vocab$vocab$terms,Freq=vocab$vocab$terms_counts)
+# wordcloud2(data=wordfreq,figPath = horse.fig)
+
+wordfreq <- prune_vocabulary(vocabulary = vocab,
+                             term_count_min =50)
+wordfreq <- data.frame(word=wordfreq$vocab$terms,
+                       Freq=wordfreq$vocab$terms_counts)
+wordcloud2(data=wordfreq,figPath = "./hotpot.png",size=3)
+
+```
+还可以画出几个文档的高频词对比
+```{r}
+library(wordcloud)
+comparisonWordFreq <- as.data.frame(t(as.matrix(dtm[1:10,])))
+colnames(comparisonWordFreq) <- paste("user",1:10)
+index <- which(apply(comparisonWordFreq,1,sum)!=0)
+comparisonWordFreq <- comparisonWordFreq[index,]
+windows(5,5)
+comparison.cloud(comparisonWordFreq,title.size = 1.5)
+```
+```
+
+
+#附：text2vec使用的英文例子
+
+```{r}
+library(text2vec)
+library(data.table)
+data("movie_review")
+setDT(movie_review)
+setkey(movie_review, id)
+set.seed(2016L)
+all_ids = movie_review$id
+train_ids = sample(all_ids, 4000)
+test_ids = setdiff(all_ids, train_ids)
+train = movie_review[J(train_ids)]
+test = movie_review[J(test_ids)]
+
+tokenizer_stem <- function(x)
+  {x=word_tokenizer(x);lapply(x,SnowballC::wordStem,language = "en")}
+it <- itoken(train$review,ids=train$id,progressbar=T,
+             preprocessor=tolower,tokenizer = tokenizer_stem)
+word_dict <- create_vocabulary(it)
+str(word_dict)
+word_dict$vocab
+
+
+it <- itoken(train$review,ids=train$id,progressbar=T,
+             preprocessor=tolower,tokenizer = word_tokenizer)
+word_dict <- create_vocabulary(it)
+word_dict$vocab
+
+vectorizer = vocab_vectorizer(word_dict)
+dtm_train = create_dtm(it, vectorizer)
+str(dtm_train)
+```
+或一步到位
+```{r}
+corpus <- create_corpus(it,vectorizer)
+dtm <- corpus$get_dtm()
+corpus$vocab()
+
+```
+
+

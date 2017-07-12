@@ -1,0 +1,191 @@
+---
+title: "WordSeg_En"
+author: "王柳盈"
+date: "2017年7月7日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+# 读取
+
+```{r}
+library(data.table)
+movie <- fread("movie_tagline_data_parsed.csv",select=1:5)
+str(movie)
+head(movie)
+
+docs <- movie$text
+movie$text <- NULL
+
+str(docs)
+
+```
+
+
+
+
+
+# 形成语料库
+```{r}
+library(tm) #简洁、方便、思路清晰
+docs <- VCorpus(VectorSource(docs))
+docs
+# ovid <- VCorpus(DirSource(txt, encoding = "UTF-8"),
+#                 readerControl = list(language = "lat"))
+# 支持直接读取txt文件、数据库文件。
+# SimpleCorpus() 和 SimpleSource()不支持数据库
+
+
+# docs <- PCorpus(VectorSource(docs),
+#                 readerControl = list(load=F),
+#      dbControl = list(dbName="moviecm.db",dbType="DB1"))
+
+
+
+getSources()
+getReaders()
+
+
+
+# documents saving
+#writeCorpus(docs[1:4],path = "./save_corpus")
+```
+
+
+
+
+# 查看方法
+```{r}
+print(docs)
+inspect(docs[1:3])
+str(docs[[1]])
+
+inspect(docs[1:3])
+inspect(docs[[1]])
+
+lapply(docs[1],as.character)
+meta(docs[[1]])
+```
+
+这里可以对元数据进行管理，诸如movie中的其它信息可以加入
+```{r}
+names(movie)
+
+# metadata management
+
+meta(docs[[1]],"heading") <- movie$title[1]
+meta(docs[[1]],"year") <- movie$year[1]
+meta(docs[[1]])
+
+# for (i in seq_along(docs))
+# {
+#   meta(docs[[i]],"heading") <- movie$title[i]
+#   meta(docs[[i]],"year") <- movie$year[i]
+# }
+# 
+# head(meta(docs,"heading"))
+```
+
+
+
+# 英文清洗
+1.去掉多余的空格
+2.去掉标点符号
+3.修改大小写
+4.去掉数字（本例中预计数字对文本内容影响不大）
+5.去停止词
+6.对英文内容进行修正，去除-ed,-s
+对以上步骤tm包都有直接支持的函数——transformation系列
+
+```{r}
+?tm_map #tm_map(x,FUN)
+getTransformations()#可用transformation函数
+inspect(docs[[713]])
+#空格
+docs_map <- tm_map(docs,stripWhitespace)
+inspect(docs_map[[713]])
+#标点
+docs_map <- tm_map(docs_map,removePunctuation)
+inspect(docs_map[[713]])
+#大小写
+tolower_wrapped <- content_transformer(tolower)
+#任意字符串操作函数可用，但要用content_transformer封装
+docs_map <- tm_map(docs_map,tolower_wrapped)
+inspect(docs_map[[713]])
+#去数字
+docs_map <- tm_map(docs_map,removeNumbers)
+inspect(docs_map[[713]])
+#去停止词
+docs_map <- tm_map(docs_map,removeWords,stopwords(kind="en"))
+#stopwords(kind="en")
+inspect(docs_map[[713]])
+#去完停止词后又出现了多余的空格
+docs_map <- tm_map(docs_map,stripWhitespace)
+inspect(docs_map[[713]])
+#去语法格(optional)
+docs_map <- tm_map(docs_map,stemDocument,language="en")
+inspect(docs_map[[713]])
+```
+
+#形成dtm待使用
+```{r}
+
+##dtm
+dtm <- DocumentTermMatrix(docs_map)
+dtm
+inspect(dtm[1:10,50:70])
+
+dtm <- DocumentTermMatrix(docs_map,control = list(weighting=weightTfIdf))
+dtm
+inspect(dtm[100:110,100:110])
+
+dtm <- DocumentTermMatrix(docs_map)
+findFreqTerms(dtm,200)
+
+
+inspect(DocumentTermMatrix(docs_map,
+          control=list(dictionary=c("die","day","earth"))))
+findAssocs(dtm,"die",corlimit=0.1)#找出相关系数大于0.1的
+inspect(removeSparseTerms(dtm,sparse = 0.5))
+
+```
+
+#作词云
+
+新版本wordcloud2添加了自定义词云形状功能
+```{r}
+devtools::install_github("lchiffon/wordcloud2") 
+```
+
+```{r}
+library(wordcloud2)
+demoFreq
+```
+demoFreq是wordcloud2示例格式，我们需要把词频数据整理成同上所示。
+```{r}
+#思路：找到高频词，得到高频词的dtm_fw再按列加和获得总频数
+freqword <- findFreqTerms(dtm,200)
+dtm_fw <- DocumentTermMatrix(docs_map,
+          control=list(dictionary=freqword))
+dim(dtm_fw)
+wordfreq <- apply(dtm_fw,2,sum)
+wordfreq <- data.frame(word=names(wordfreq),Freq=wordfreq)
+horse.fig <- "./horse1.png"
+wordcloud2(data=wordfreq,figPath = horse.fig)
+```
+还可以画出几个文档的高频词对比
+```{r}
+library(wordcloud)
+comparisonWordFreq <- as.data.frame(t(as.matrix(dtm[1:10,])))
+colnames(comparisonWordFreq) <- movie$title[1:10]
+index <- which(apply(comparisonWordFreq,1,sum)!=0)
+comparisonWordFreq <- comparisonWordFreq[index,]
+windows(5,5)
+comparison.cloud(comparisonWordFreq,title.size = 1.5)
+```
+
