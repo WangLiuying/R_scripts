@@ -155,37 +155,5 @@ inspect(removeSparseTerms(dtm,sparse = 0.5))
 
 ```
 
-#作词云
 
-新版本wordcloud2添加了自定义词云形状功能
-```{r}
-devtools::install_github("lchiffon/wordcloud2") 
-```
-
-```{r}
-library(wordcloud2)
-demoFreq
-```
-demoFreq是wordcloud2示例格式，我们需要把词频数据整理成同上所示。
-```{r}
-#思路：找到高频词，得到高频词的dtm_fw再按列加和获得总频数
-freqword <- findFreqTerms(dtm,200)
-dtm_fw <- DocumentTermMatrix(docs_map,
-          control=list(dictionary=freqword))
-dim(dtm_fw)
-wordfreq <- apply(dtm_fw,2,sum)
-wordfreq <- data.frame(word=names(wordfreq),Freq=wordfreq)
-horse.fig <- "./horse1.png"
-wordcloud2(data=wordfreq,figPath = horse.fig)
-```
-还可以画出几个文档的高频词对比
-```{r}
-library(wordcloud)
-comparisonWordFreq <- as.data.frame(t(as.matrix(dtm[1:10,])))
-colnames(comparisonWordFreq) <- movie$title[1:10]
-index <- which(apply(comparisonWordFreq,1,sum)!=0)
-comparisonWordFreq <- comparisonWordFreq[index,]
-windows(5,5)
-comparison.cloud(comparisonWordFreq,title.size = 1.5)
-```
 
