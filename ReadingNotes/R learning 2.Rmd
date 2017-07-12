@@ -1,0 +1,171 @@
+---
+title: "R learing 2"
+author: "Wang,Liuying"
+date: "2016年10月8日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Constants
+### Numeric Victors
+
+```{r}
+#hexadcimal
+0x1
+0xFFFF
+#numeiric type
+typeof(1)
+typeof(1:5)
+#limis of precision
+(2^2013+1)==2^2013
+2^2014
+#complex values
+#real_part+imaginary_parti
+0+1i^2
+sqrt(-1+0i)
+exp(0+1i*pi)
+#sqrt()function will return a value of the same type.
+```
+
+### Character Vectors
+```{r}
+identical("\"hello\"","hello")
+identical('\'hello\'',"'hello'")
+```
+
+### Symbols
+Not all words are valid as symbols.You can't use `If, else, repeat, while, function, for, in, next, break, TRUE, NULL, Inf, NaN, NA, NA_integer_, NA_complex_, NA_character_`, etc.
+
+## Operations
+
+```{r}
+# addition
+1+19
+# multiplication
+5*4
+# modulus
+41%%21
+# exponents
+2^1
+# integer division
+21%/%2
+```
+
+### Assignments
+```{r}
+v <- 1:8
+dim(v) <- c(2,4)
+v
+z <- function(a,b,c){a^b/c}
+formals(z) <- alist(a=1,b=2,c=3)#设置formal argument
+z()
+```
+
+## Expressions
+### Curly Braces `{}`
+Often, curly baces are used to group a set of operations in the body of a function, and can also be used as expressions in other contexts. The contents of the curly braces are evaluated inside the current environment; note that a new environment is created by a function call **but not** by the use of curly braces.
+
+## Control Structures
+### Conditional Statements
+The function `if` has the type `special`
+```{r}
+typeof(`if`)
+```
+In R, `if` conditional statements are not vector operations. If the conditon statement is a vector of more than one logical value, then only the first item will be used.\
+If you would liake a vector operation, use the `ifelse` function instead.
+```{r}
+a <- rep("a",5)
+b <- rep("b",5)
+ifelse(c(T,T,F,F,T),a,b)
+```
+bonus:`switch`
+```{r}
+switcheroo.if.then <- function(x)
+{
+  switch(x,
+         a="aligator",
+         b="bear",
+         c="camel",
+         "moose")
+}
+switcheroo.if.then("a");switcheroo.if.then("f")
+```
+
+### Loop
+There are three different looping constructs.\
+1. Simplest is `repeat`.\
+`repeat expression`, to wtop repeating use the keyword `break`.
+```{r}
+i <- 5
+repeat{if(i>25) break else {print(i);i <- i+5}}
+```
+If you don't include a `break` command, the R code will be an infinite loop. This can be useful for creating an interactive application.\
+2. Another useful construction is `while` loops.\
+`while(condition*) expression`
+```{r}
+i <- 5
+while(i<=25) {print(i);i <- i+5}
+```
+You can use `break` and `next` inside loops. The `break` is used to stop iterating through a loop. The `next` statement skips to the next loop iteration without evaluating the remaining expressions in the loop body.\
+3. Finally, R provides `for` loops, which iterate through each item in a vector (or a list).\
+`for (var in list) expression`
+```{r}
+for(i in seq(5,25,by=5)){print(i)}
+```
+#### Looping Extension
+>I can't install this package now. This part is for referrence later.
+Iterators can make code easier to parallelize. You'll need to install the iterators packages.\
+`iter(obj, checkFunc=function(...) TRUE, recycle=FALSE,...)`
+```{r}
+library(iterators)
+onetofive <- iter(1:5)
+nextElem(onetofive)
+nextElem(onetofive)
+nextElem(onetofive)
+```
+A second extension is the foreach loop, available through the `foreach` package.
+```{r}
+library(foreach)
+#foreach
+sqrts.1to5 <- foreach(i=1:5) %do% sqrt(i)
+#the %do% operator evaluates teh expression in serial, while the %dopar% can be used to evaluate expressions in  parallel.
+```
+
+##Accessing Data Structures
+###Indexing 
+Use single-bracket *[* to select a subset, and double-bracket *[[* to select a single element.\ 
+If you select a subset of elements that corresponds to a matrix object; if you select a subset taht corresponds to only a vector. To disable this behavior, you can use the `drop=FALSE` option.
+```{r}
+a <- array(101:124,dim=c(2,3,4))
+class(a[1,1,])
+class(a[1,,])
+class(a[1:2,1:2,1:2])
+class(a[1,1,1,drop=F])
+```
+It is possible to replace elements in a vector, matrix, or array using the same notation.
+```{r}
+a[1:2,1:2,1] <- matrix(c(1001:1004),nrow=2,ncol=2)
+```
+###Indexing by logical vector
+```{r}
+v=100:119
+v[rep(c(T,F),10)];v[c(T,F)]
+v[(v==103)]
+```
+###Indexing by name
+You can index a set of element by name using the *$* notation or the single-bracket notation *[*（Using double-bracket *[[* when selecting a single element. \
+It is even possible to index by partial name using the `exact=FALSE`.
+```{r}
+dairy <- list(milk="1 gallon", butter="1 pound", eggs=12)
+dairy$milk; dairy["milk"]; dairy[["milk"]]
+dairy[["mil"]];dairy[["mil",exact=F]]
+##升级版来了
+fruit <- list(apples=6, oranges=3, bananas=10)
+shopping.list <- list(dairy=dairy, fruit=fruit)
+shopping.list
+shopping.list[[c("dairy","milk")]];shopping.list[[c(1,2)]]
+shopping.list$dairy$milk
+```

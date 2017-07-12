@@ -1,0 +1,60 @@
+---
+title: "幻灯制作"
+subtitle: "学习"
+author: "王柳盈"
+date: "2017/4/22"
+output:
+  xaringan::moon_reader:
+    css: zh-CN.css
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+options(servr.daemon = TRUE)
+```
+
+#text alignment
+
+
+.center[now if I want to set some text in the middle
+
+have a try now]
+
+
+---
+layout:true
+
+name:linkSource
+class:center,middle
+
+#link test
+
+it should link to this page.
+
+---
+
+
+[click here](#linkSource)
+
+---
+
+
+layout:false
+
+class:left,bottom
+
+#change the layout
+
+.remark-code[see if the font is changed]
+
+---
+
+#see the results
+
+.footnote[.red.bold[*] Important footnote]

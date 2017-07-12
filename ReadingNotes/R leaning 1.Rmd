@@ -1,0 +1,68 @@
+---
+title: "在R Markdown文档中使用中文"
+author:
+  - 谢益辉
+  - 邱怡轩
+  - 于淼
+documentclass: ctexart
+output:
+  rticles::ctex:
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+classoption: "hyperref,"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Expression
+Expressions are composed of objects and functions.
+
+## Objects
+An object is a "thing" that is represented by the computer. Examples of objects in R include numeric vectors, charater vectors, lists, and functions.
+
+```{r}
+# a list
+list(c(1,2,3,4,5),"this is an object","this whole thing is a list")
+```
+
+## Symbols
+Variable names in R are called symbols.
+
+## Functions
+A function is an object in R that takes some input objects(arguments) and returns an output object.Every operation in R is a function call.
+
+## Special Values
+* **NA** not available.
+* **Inf & -Inf** positive and negative infinity.
+* **NaN** not a number.
+* **NULL** NULL is often used as an argument in functions to mean that no value was assigned to the argument.
+
+## Coercion
+When you call a function with an argument of the wrong type, R will try to coerce values to a different type so that the function will work.\
+roughly logical < integer < numeric < complex < character < list\
+You can inhibit this by using the AsIs function.
+
+## the R Interpreter
+Some functionality is implemented internally within the R system.\
+Many functions use `.Internal` to call internal R \
+e.g. `plot.xy`\
+R includes a mechanism to difine functions that are implemented completely internally.\
+You can identify these functions because the body of the function contains a call to the function `.Primitive`.
+
+## Seeing how R works
+By calling `quote()` we can see how this expression is parsed.\
+```{r}
+x=1
+if (x>1) "orange" else "apple"
+quote(if (x>1) "orange" else "apple")
+lapply(as(quote(if (x>1) "orange" else "apple"),"list"),typeof)
+
+
+as.list(quote(x[2]))
+deparse(quote(`[`(x,2)))
+```
+ 
+ You might try using `quote`, `substitute`, `typeof`, `class`, and `methods` to see how the R interpreter parses expressions.

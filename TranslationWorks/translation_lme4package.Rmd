@@ -1,0 +1,1537 @@
+---
+title: "Untitled"
+author: "王柳盈"
+date: "2016年12月16日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Pastes 
+胶水黏性强度
+
+##描述
+
+化学胶水黏性强度，其质量取决于产品批次，以及每一批的桶次。  
+
+##数据集格式
+
+数据框，一下4个变量各含有60个观测值:  
+
+strength
+:  胶水黏性强度。  
+
+batch
+:   样本的批次，从`‘A’`到`‘J’`10个水平的因子变量。    
+
+cask
+:  每一批内的桶次，从`‘a’`到`‘c’`三个水平的因子变量。  
+
+sample
+:  经过测试的胶水样本批次：桶次，每个样本有两个测试值，从`‘A:a’`到`‘J:c’`30个水平的因子变量。  
+
+
+##细节
+
+Pastes数据来源于Davies和Goldsmith(1972)：以桶为单位，分批次的化学胶水产品，忽略采样和测试误差，每批次的质量均有不同…每批次随机选取三桶采样并将样本保存备查…从10个批次随机抽样，并对每个样本进行两次测试。  
+
+
+##来源
+
+O.L. Davies and P.L. Goldsmith (eds), Statistical Methods in Research and Production, 4th ed.,
+Oliver and Boyd, (1972), section 6.5
+
+##示例
+
+```
+require(lattice)
+dotplot(cask ~ strength | reorder(batch, strength), Pastes,
+strip = FALSE, strip.left = TRUE, layout = c(1, 10),
+ylab = "Cask within batch",
+xlab = "Paste strength", jitter.y = TRUE)
+## Modifying the factors to enhance the plot
+Pastes <- within(Pastes, batch <- reorder(batch, strength))
+Pastes <- within(Pastes, sample <- reorder(reorder(sample, strength),
+as.numeric(batch)))
+dotplot(sample ~ strength | batch, Pastes,
+strip = FALSE, strip.left = TRUE, layout = c(1, 10),
+scales = list(y = list(relation = "free")),
+ylab = "Sample within batch", xlab = "Paste strength", jitter.y = TRUE)
+## Four equivalent models differing only in specification
+(fm1 <- lmer(strength ~ (1|batch) + (1|sample), Pastes))
+(fm2 <- lmer(strength ~ (1|batch/cask), Pastes))
+(fm3 <- lmer(strength ~ (1|batch) + (1|batch:cask), Pastes))
+(fm4 <- lmer(strength ~ (1|batch/sample), Pastes))
+## fm4 results in redundant labels on the sample:batch interaction
+head(ranef(fm4)[[1]])
+## compare to fm1
+head(ranef(fm1)[[1]])
+## This model is different and NOT appropriate for these data
+(fm5 <- lmer(strength ~ (1|batch) + (1|cask), Pastes))
+L <- getME(fm1, "L")
+Matrix::image(L, sub = "Structure of random effects interaction in pastes model")
+```
+
+
+#Penicillin
+对青霉素测试的差异
+
+##描述
+
+用枯草芽孢杆菌试验板方法对24个培养皿中培养皿的6个青霉素样本进行测试。测试的响应变量是抑制有机体生长的区域的直径（mm）。
+
+##数据集格式
+
+数据框，以下三个变量各含有144个观测值:
+
+diameter
+:   抑制有机体生长的区域的直径（mm）。  
+
+plate
+:  培养皿，从`‘a’`到`‘x’`24个水平的因子变量。  
+
+sample
+:  青霉素样本，从`‘A’`到`‘F’`6个水平的因子变量。  
+
+
+##细节
+
+Penicillin数据来源于Davies和Goldsmith(1972)：一项关于用枯草芽孢杆菌方法评估青霉素样品的变异性的研究。将批量接种的营养琼脂培养基倒入直径约90mm培养皿。营养琼脂放置好以后，将六个直径约4毫米的小型空心圆柱体以等距间隔粘在表面上。柱体里是待测的青霉素溶液，将整个培养皿放置于给定时间的培养箱中。青霉素会从柱体中扩散到琼脂里，并且会产生一个明显的容易测量的抑制有机体生长的区域。已知此区域直径与青霉素溶液浓度有关。
+
+##来源
+
+O.L. Davies and P.L. Goldsmith (eds), Statistical Methods in Research and Production, 4th ed.,
+Oliver and Boyd, (1972), section 6.6
+
+##示例
+
+```
+str(Penicillin)
+require(lattice)
+dotplot(reorder(plate, diameter) ~ diameter, Penicillin, groups = sample,
+ylab = "Plate", xlab = "Diameter of growth inhibition zone (mm)",
+type = c("p", "a"), auto.key = list(columns = 3, lines = TRUE,
+title = "Penicillin sample"))
+(fm1 <- lmer(diameter ~ (1|plate) + (1|sample), Penicillin))
+L <- getME(fm1, "L")
+Matrix::image(L, main = "L",
+sub = "Penicillin: Structure of random effects interaction")
+```
+
+#Plot.lmList4
+为lmList4对象作图
+
+##用法
+
+```
+## 针对lmList4类型的S3 方法
+plot(x, form, abline, id, idLabels, grid, ...)
+## 针对lmList4.confint类型的S3 方法
+plot(x, y, order, ...)
+```
+
+##参数
+x	
+:  继承自类型`lmList`的对象，由同一个模型拟合的`lm`对象组成的列表。   
+
+y	
+:  忽略：为了和一般方法保持一致。  
+
+form	
+:  可选，说明想要的绘图类型的公式。所有出现在原始数据框中的、用来得到`x`的变量都可以用在这里（公式里）。另外，`x`自己可以以`“.”`的形式出现在公式中。条件表达式用`|`运算符表示，将会分组绘制展现在格图里。默认操作是`resid(.,type=”pool”)~fitted(.)`，对应地将输出一张标准化残差-拟合值图（用混合面板数据形式估计残差标准误）。   
+
+abline
+:  可选，数值标量或二维数值向量。如果输入单一值，会在相应坐标上绘制一条水平线。如果输入一个向量，将会添加一条具有相应值截距和斜率的直线。如果缺省，则不会添加线。   
+
+id	
+:  可选，数值型，或单边的公式。如果输入一个数值，它会被用作标准化残差离群值双侧检验的显著性水平。如果标准化残差的绝对值大于正态分布的`1-value/2`分位数，那么相对应的观测值会被用`idLabels`标记于图中。如果输入一个单边公式，它的右侧必须计算得到逻辑的、整型的或字符向量，以便识别图中的观测值。如果缺省，不会标记或识别任何观测值。   
+
+idLabels	
+:  可选，向量或单边公式。如果输入一个向量，会被转换为字符型并用来标记根据`id`参数识别出的观测值。如果输入一个单边公式，它的右侧必须计算得到一个向量，且会被转化为字符以标记识别的观测值。默认是`getGroups（x）`。  
+
+grid
+:  可选，逻辑值，说明是否在图中添加网格。默认情况，视所用格图类型而定：如果用xyplot默认为TRUE，否则默认为FALSE。   
+
+order	
+:  结果将被依据何系数排序。   
+
+…	
+:  可选参数，将被传入格图绘图函数中。   
+
+
+##细节
+
+`lmList4`类型使用的`plot`方法沿袭`lmList`对象的绘图方法。参见`plot.lmList`。
+
+##作者
+
+`nlme` 包中的原始版本是由Jose Pinheiro and Douglas Bates构建的。
+
+##示例
+
+```
+fm.plm  <- lmList(Reaction ~ Days | Subject, sleepstudy)
+## 诊断图: 标准化残差 vs. 拟合值
+plot(fm.plm,id=0.05)
+ci <- confint(fm.plm)
+## 绘制 CIs, 按斜率大小排序(系数 2)
+plot(ci,order=2,ylab="Subject")
+```
+
+#plot.merMod
+
+针对merMod类方法拟合的对象绘制诊断图
+
+##描述
+
+针对merMod方法拟合的对象绘制诊断图。  
+
+##用法
+
+```
+## 针对“merMod”类型的S3 方法
+ plot(x,
+    form = resid(., type = "pearson") ~ fitted(.), abline,
+    id = NULL, idLabels = NULL, grid, ...)
+##针对“merMod”类型的S3 方法
+qqmath( x, id = NULL, idLabels = NULL, ...)
+```
+
+##参数
+
+x		
+:  拟合的[ng]lmer模型。  
+
+form
+:  可选，说明想要的绘图类型的公式。所有出现在原始数据框中的、用来得到`x`的变量都可以用在这里（公式里）。另外，`x`自己可以以`.`的形式出现在公式中。条件表达式用`|`运算符表示，将会分组绘制展现在格图里。默认操作是`resid(.,type=”pearson”)~fitted(.)`，对应地将输出一张标准化残差-拟合值图。   
+
+abline
+:  可选，数值标量或二维数值向量。如果输入单一值，会在相应坐标上绘制一条水平线。如果输入一个向量，将会添加一条具有相应值截距和斜率的直线。如果缺省，则不会添加线。   
+
+id	
+:  可选，数值型，或单边的公式。如果输入一个数值，它会被用作标准化残差离群值双侧检验的显著性水平。如果标准化残差的绝对值大于正态分布的`1-value/2`分位数，那么相对应的观测值会被用`idLabels`标记于图中。如果输入一个单边公式，它的右侧必须计算得到逻辑的、整型的或字符向量，以便识别图中的观测值。如果缺省，不会标记或识别任何观测值。   
+
+idLabels	
+:  可选，向量或单边公式。如果输入一个向量，会被转换为字符型并用来标记根据`id`参数识别出的观测值。如果输入一个单边公式，它的右侧必须计算得到一个向量，且会被转化为字符型以标记识别的观测值。默认会输出数据框中所有分组因子两两交叉的结果。一个特别的公式`idLabel=~.obs`，将会用观测值来标记异常的观测点。   
+
+grid
+:  可选，逻辑值，说明是否在图中添加网格。默认情况，视所用格图类型而定：如果用`xyplot`默认为TRUE，否则默认为FALSE。    
+
+…
+: 可选参数，将被传入格图绘图函数。  
+
+
+##细节
+
+为获得的线性混合效应模型绘制诊断图。`form`参数允许我们灵活地选择图像类型。在格图绘制中，条件表达式（置于`|`右侧的操作符）表示绘图函数会依据条件因子的不同水平来绘制多个面板。如果`form`输入了单边公式，会绘出公式右侧、`|`操作符前的变量的直方图。如果`form`是个双侧的公式，它的两侧都是数值型变量，那么将会绘制散点图（通过格图函数`xyplot`绘制）。最后，如果`form`是个双侧的公式，且其左侧是一个因子变量，那么会根据该变量的水平进行分组，绘制右侧变量的箱线图（通过格图函数`bwplot`绘制）。       
+`qqmath`则会生成残差的Q-Q图（有关Q-Q图和它的条件模式取值，参见`link{qqmath.ranef.mer}`）。
+
+##作者
+
+`nlme`包中的原始版本是由Jose Pinheiro and Douglas Bates构建的。   
+
+
+##示例
+
+```
+data(Orthodont,package="nlme")
+fm1 <- lmer(distance ~ age + (age|Subject), data=Orthodont)
+## 按性别分组，标准化残差vs拟合值
+plot(fm1, resid(., scaled=TRUE) ~ fitted(.) | Sex, abline = 0)
+## 按Subject分组，残差的箱线图
+plot(fm1, Subject ~ resid(., scaled=TRUE))
+## 按Subject分组，观测值vs拟合值
+plot(fm1, distance ~ fitted(.) | Subject, abline = c(0,1))
+## 按照性别分大组，按年龄次级组展示残差
+plot(fm1, resid(., scaled=TRUE) ~ age | Sex, abline = 0)
+require("lattice")
+qqmath(fm1, id=0.05)
+if (require("ggplot2")) {
+    ## 我们可以用 ggplot2 和 fortify() 函数创建相同的图
+    fm1F <- fortify(fm1)
+    ggplot(fm1F, aes(.fitted,.resid)) + geom_point(colour="blue") +
+           facet_grid(.~Sex) + geom_hline(yintercept=0)
+    ## 注：Subjects按照平均离差排序
+    ggplot(fm1F, aes(Subject,.resid)) + geom_boxplot() + coord_flip()
+    ggplot(fm1F, aes(.fitted,distance))+ geom_point(colour="blue") +
+        facet_wrap(~Subject) +geom_abline(intercept=0,slope=1)
+    ggplot(fm1F, aes(age,.resid)) + geom_point(colour="blue") + facet_grid(.~Sex) +
+        geom_hline(yintercept=0)+geom_line(aes(group=Subject),alpha=0.4)+geom_smooth(method="loess")
+    ## (有关loess 的警告，原因是x只有四个取值)
+    detach("package:ggplot2")
+}
+```
+
+#plots.thpr：混合效应模型轮廓绘制（常规/密度/成对）
+
+##描述
+
+`xyplot`, `densityplot`和`piars plot`方法在混合效应模型上的应用。   
+
+`xyplot（）`绘出“zeta”图，同时可视化置信区间。  
+
+`densityplot（）`绘出轮廓密度。  
+
+`splom（）`用来绘制轮廓的对图。将会在二维边缘区域上绘制等高线。（即，使用df=2）  
+
+
+##用法
+
+```
+## 针对'thpr'类型对象的S3方法
+xyplot(x, data = NULL,
+levels = sqrt(qchisq(pmax.int(0, pmin.int(1, conf)), df = 1)),
+conf = c(50, 80, 90, 95, 99)/100,
+absVal = FALSE, scales=NULL,
+which = 1:nptot, ...)
+## 针对'thpr'类型对象的S3方法
+densityplot(x, data, ...)
+## 针对'thpr'类型对象的S3方法
+splom(x, data,
+levels = sqrt(qchisq(pmax.int(0, pmin.int(1, conf)), 2)),
+conf = c(50, 80, 90, 95, 99)/100, which = 1:nptot,
+draw.lower = TRUE, draw.upper = TRUE, ...)
+```
+
+##参数
+
+x		
+:  一个混合效应模型轮廓，具有类型“thpr”，通常来自`profile(fm)`的结果，其中`fm`是`lmer`（或广义版本）拟合的模型。  
+
+data
+:  无用参数，为了与一般的绘图函数保持兼容性。  
+
+levels
+:  欲显示的等高线水平数；通常由`conf`推算。  
+
+conf
+:  数值向量，等高线计算的置信水平。  
+
+absVal
+:  逻辑值，指定`abs（.）`的输出值是否要绘出，通常在置信区间可视化中使用。  
+
+scales
+:  绘图选项，会被传入`xyplot`函数。  
+
+which
+:  整型或字符向量，指定哪些参数应被用来绘制轮廓；默认是所有参数（参见`profile-methods`）。  
+
+draw.lower
+: （逻辑型）是否画出下三角面板？  
+
+draw.upper
+: （逻辑型）是否画出上三角面板？
+
+…	
+:  更多参数，将被分别传入`lattice`包的`xyplot`, `densityplot`, `splom`函数。  
+
+
+##返回值
+
+`xyplot`: 密度图像，“trellis”类型对象（lattice包），使用print()的时候会在当前的图像设备上生成图像。  
+
+`densityplot`：密度图像，“trellis”类型对象，参见上文。  
+
+`splom`: 对图，生成散点图矩阵，“trellis”类型对象，参见上文。  
+
+
+##另请参阅
+
+[profile]，内附一个例子解释。  
+
+##示例
+
+```
+## 参见 example("profile.merMod")
+```
+
+#predict.merMod	
+
+模型的预测值
+
+##描述
+
+`merMod`对象的`predict`方法，例如，对`lmer()`，`glmer()`等的返回结果进行预测。  
+
+##用法
+
+```
+## 类型为merMod的S3方法
+predict(object, newdata=NULL,newparams=NULL,
+re.form=NULL, ReForm,REForm,REForm,terms=NULL,
+type=c(“link”,”response”), allow.new.levels=FALSE,
+na.action=na.pass, ...)
+```
+
+##参数
+object
+:  一个拟合好的模型对象。  
+
+newdata
+:  用于计算预测值的数据框。  
+
+newparams
+:  计算预测值时使用的新参数——一个包含theta和（或）beta的列表。和lmer或者glmer函数中的start参数一样需要被指定。  
+
+re.form
+:  建立在有无随机效应的条件下的公式。如果值为NULL，则包括所有随机效应；如果值为NA或者`~0`，则不包括任何随机效应。  
+
+Reform，REForm，Reform
+:  允许向后兼容：于此已介绍完re.form参数的所有可能取值。  
+
+terms
+:  一个terms对象——目前尚未使用过。  
+
+type
+:  字符串——其取值可以是默认值“link”，也可以是“response”，它指定了返回的预测对象的类型。  
+
+allow.new.levels
+:  逻辑值。指示是否允许`newdata`中存在新的类别（或NA值）。如果值为FALSE（默认值），则newdata中存在新值将会触发错误。如果值为TRUE，则会使用总体内此前未被观测到的值（或NA值）进行预测。  
+
+na.action
+:  参数值是一个函数。该函数决定了应该怎么处理`newdata`中固定效应中的缺失值。其默认值是对NA进行预测：参见`na.pass`。  
+
+...
+:  可选的其它参数：目前还没有使用过的参数。  
+
+
+##返回值  
+
+返回预测值向量。  
+
+
+##注
+
+没有计算预测的标准误差的其他方法，因为难以定义包含方差参数不确定性的有效方式。我们建议使用`bootMer`来完成计算。  
+
+
+##示例
+
+```
+(gm1 <- glmer(cbind(incidence, size - incidence) ~ period + (1 |herd), cbpp, binomial)) str(p0 <- predict(gm1)) # 拟合值
+str(p1 <- predict(gm1,re.form=NA)) # 无条件（0类别）的拟合值
+newdata <- with(cbpp, expand.grid(period=unique(period), herd=unique(herd))) 
+str(p2 <- predict(gm1,newdata)) # 新数据，所有都是RE格式
+str(p3 <- predict(gm1,newdata,re.form=NA)) # 新数据, 类别为0 
+str(p4 <- predict(gm1,newdata,re.form= ~(1|herd))) # 直接指定为RE
+stopifnot(identical(p2, p4))
+```
+
+#profile-methods
+`merMod`对象的`profile`方法  
+
+##描述
+
+`nlmer`、`glmer`、`lmer`拟合模型的`profile()`方法。  
+`log()`方法和更灵活的`logProf()`方法将`lmer`的`profile`对象转化为使用对数形式标准差的对象。  
+
+##用法
+
+```
+    ## merMod类型的S3方法
+    profile(fitted, which = NULL, alphamax = 0.01, 
+    maxpts = 100, delta = NULL, 
+            delta.cutoff = 1/8, verbose = 0, devtol = 1e-09, 
+            maxmult = 10, startmethod = "prev", optimizer = NULL, 
+            control=NULL, signames = TRUE, parallel = c("no", "multicore", "snow"), 
+            ncpus = getOption("profile.ncpus", 1L), cl = NULL, ...) 
+    ## thpr类型的S3方法 
+    as.data.frame(x, ...) 
+    ## thpr类型的S3方法 
+    log(x, base = exp(1)) 
+    logProf(x, base = exp(1), ranef = TRUE, sigIni = if(ranef)  "sig"  else  "sigma")
+```
+    
+##参数
+
+fitted
+:  一个拟合好的模型，例如`lmer(...)`的返回结果。
+
+which
+:  NULL值、整数或者字符向量。指定应该轮廓似然化哪个参数：默认值NULL表示所有参数。对于整数的参数值，例如索引，参数按以下顺序排列：  
+
+1.	随机效应参数（theta）；在`getME(.,”theta”)`已经对这些参数进行了排序，例如，矩阵的下三角阵（包含对角线上的标准差，以及非对角线上的相关系数）；  
+
+2.	残余标准差（或者广义线性混合模型的尺度参数）；  
+
+3.	固定效应参数（beta）。   
+
+
+alphamax
+:  一个（0，1）区间上的数。`1-alphamax`代表似然比置信区域的`alpha`的最大值；用来创建轮廓似然法中参数值的范围。  
+
+maxpts
+:  指定（各个参数的每个方向上）待评估的点的最大个数，以作建立轮廓似然函数之用。  
+
+delta
+:  尺度增量，决定了下一个进入轮廓似然函数的点。代码使用了轮廓似然函数在当前点的局部导数，用来计算重要参数的变化程度，这会决定基于偏差平方根水平的`delta`增量步长。如果值为NULL，那么`delta.cutoff`将会被用来决定尺度增量。   
+
+delta.cutoff
+:  尺度增量(查看`delta`)被表示为，基于平方根偏差水平的轮廓似然函数最大值的分数形式。因此，`delta.cutoff`设置的`1/n`将导致每个参数大约有`2n`个点用于计算各自的轮廓似然函数值（例如，低于或高于参数估计值这两个方向上各有n个点）。  
+
+verbose
+:  指定内部计算的输出方式。  
+
+devtol
+:  拟合偏差小于偏差最小值的容忍度（允许误差大小）。  
+
+maxmult
+:  允许的原有增量大小的最大倍数，默认为10。  
+
+startmethod
+:  用于获取优化起始值的方法。
+
+optimizer
+:  使用的（字符或者函数）优化器（查看lmer寻求详细说明）。默认是使用原拟合模型中的优化器。  
+
+control
+:  一个控制轮廓似然函数的选项列表（`list`）（可查看`lmerControl`）：默认使用原拟合模型中的控制设置。  
+
+signames
+:  逻辑值。指示`.sigNN`是否应该使用缩写形式；若为FALSE，`(sd|cor)_(effects)|(group)`这种形式的名称会更明确（但相比缩写形式，也会更长）。需注意的是，对轮廓似然函数值进行转化时（比如`log()`或`varianceProf`），有一些代码只有在`signames==TRUE`时才能正确运行。  
+
+...
+:  各种方法的潜在参数。   
+
+x
+:  thpr类型的对象（例如`profile`函数的输出结果）。  
+
+base
+:  对数的底数。默认为自然对数。  
+
+ranef
+:  逻辑值。指示随机效应的`sigma`值是否也应该作对数变换。如果为FALSE，那么只会对`sigma`（误差的标准差）作对数变换。  
+
+sigIni
+:  字符串。指定`sigma`参数的开头部分，并对这部分进行对数变换。  
+
+parallel
+:  要使用的并行操作类型（如果需要进行操作）。如果没有给参数赋值，那么默认从`profile.parallel`中获取该参数值（如果该方法没有设置并行操作类型，则认定参数值为“no”）。  
+
+ncpus
+:  整数。指定在并行操作中需要使用的进程个数。一般地我们会将此参数值设定为可用的CPU个数。   
+
+cl
+:  一个进行并行运算或者snow集群计算的可选参数。当指定 `parallel=“snow”`时，则会进行集群运算。如果没有提供任何参数值，则会在本地服务器上创建一个集群，直到`profile`函数调用结束才会结束该集群。
+
+
+##细节
+
+`log`方法和更灵活的`logProf()`函数将`profile()`结果转化为使用`log(sigma)`代替`sigma`的对象。默认地，所有`sigma`包括随机效应的标准差都会被转化为对数形式，例如，该方法返回一个将所有`.sigNN`参数转化为`.lsigNN`的`profile`对象。如果`ranef`参数值为FALSE，那么只有误差的标准差`.sigma`会被转化（因为在任何情况下它都不应该是0，尽管随机效应标准差`.sigNN`理论上可以为0）。
+
+经过对数转化后的参数的向前和向后的样条会被重新计算。   
+
+`stats`包的`profile`函数的方法，在这里被用来拟合混合效应模型。
+
+##返回值
+
+`profile(<merMod>)`返回类似于数据框的“thpr”类型的S3对象。`profile`对象的一些重要方法：`confint()`会返回基于轮廓似然法得到的置信区间，以及三个绘图方法（要求加载`lattice`包），`xyplot`函数，`densityplot`函数和`splom`函数。
+
+另外，`log()`和`as.data.frame()`方法能有效地转化“thpr”对象。  
+
+##另请参阅
+
+对于“thpr”类型的对象，其绘图方法包括[xyplot]等；
+[varianceProf]会把标准差转化为方差。
+寻求其它类型的置信区间 ，请查看[bootMer]方法。
+
+##示例
+
+```
+fm01ML <- lmer(Yield ~ 1|Batch, Dyestuff, REML = FALSE)
+system.time( 
+tpr <- profile(fm01ML, optimizer="Nelder_Mead", which="beta_") 
+)## 快速。因为只对一个beta参数计算轮廓似然函数值
+## 对所有参数计算轮廓似然函数值（默认which参数为‘all’）
+## ~2.6s (在一台 2010 Macbook Pro上运行) 
+system.time( tpr <- profile(fm01ML)) 
+## ~1s, 可能会出现关于bobyqa收敛的警告 
+(confint(tpr) -> CIpr) 
+stopifnot(all.equal(unname(CIpr), 
+array(c(12.1985292, 38.2299848, 1486.4515, 84.0630513, 67.6576964, 1568.54849), dim = 3:2), tol= 1e-07))# 1.37e-9 {64b} 
+library("lattice") 
+xyplot(tpr) 
+xyplot(tpr, absVal=TRUE) # 从图中可以看到置信区间（还可以从图中检验对称性）
+xyplot(tpr, conf = c(0.95, 0.99), main = "95% and 99% profile() intervals") 
+xyplot(logProf(tpr, ranef=FALSE), 
+main = expression("lmer profile()s"~~ log(sigma)*" (only log)")) 
+densityplot(tpr, main="densityplot( profile(lmer(..)) )") 
+densityplot(varianceProf(tpr), main=" varianceProf( profile(lmer(..)) )") 
+splom(tpr) 
+splom(logProf(tpr, ranef=FALSE)) 
+doMore <- lme4:::testLevel() > 1 
+if(doMore) { ##不具一般性，因为时间是常数复杂度
+system.time(tpr2 <- profile(fm01ML, which=1:2, optimizer="Nelder_Mead")) print( xyplot(tpr2) ) 
+print( xyplot(log(tpr2)) )# log(sigma)更好
+print( xyplot(logProf(tpr2, ranef=FALSE)) ) 
+
+## GLMM 例子
+gm1 <- glmer(cbind(incidence, size - incidence) ~ period + (1 | herd), data = cbpp, family = binomial) 
+## 在一台一般配置的机器上运行 ~ 10-12 秒
+print( system.time(pr4 <- profile(gm1, verbose=TRUE)) ) 
+print( xyplot(pr4, layout=c(5,1), as.table=TRUE) ) 
+print( xyplot(log(pr4), absVal=TRUE) ) # log(sigma_1) 
+print( splom(pr4) ) 
+print( system.time( # 比较快的: 只有sig01和一个固定效应 
+pr2 <- profile(gm1, which=c("theta_", "period2")))) 
+print( confint(pr2) ) 
+## delta..: 仅对sigma_1而言有更高的底层解析率
+print( system.time( 
+pr4.hr <- profile(gm1, which="theta_", delta.cutoff=1/16))) 
+print( xyplot(pr4.hr) )
+}
+```
+
+#prt-utilities
+针对混合效应模型的`print`和`summary`方法的公共程式
+
+##描述
+
+`lme4`包中的`print`和`summary`方法（包括对`summary（）`结果的`print`）是一个模组，大约使用了10个小的公共程式。其它的构建在`lme4`上的包可以使用同样的程式以简约程序和达到输出的一致性。  
+
+注意参见示例。  
+
+`llikAIC( )`从拟合的LMM中提取对数似然、AIC和相关统计量。  
+
+`formatVC( )`“format（）”为VarCorr-随机效应的的方差-协方差矩阵设计版式-以便打印和显示；它同时也是 `.prt.VC()` 中的主干，返回字符型矩阵。  
+
+`.prt.*( )`全都使用`cat`和`print`生成输出。  
+
+##用法
+
+```
+llikAIC(object, devianceFUN = devCrit, chkREML = TRUE,
+devcomp = object@devcomp)
+methTitle(dims)
+.prt.methTit(mtit, class)
+.prt.family (famL)
+.prt.resids (resids, digits, title = "Scaled residuals:", ...)
+.prt.call (call, long = TRUE)
+.prt.aictab (aictab, digits = 1)
+.prt.grps (ngrps, nobs)
+.prt.warn (optinfo, summary = FALSE, ...)
+.prt.VC (varcor, digits, comp, formatter = format, ...)
+formatVC(varcor, digits = max(3, getOption("digits") - 2),
+comp = "Std.Dev.", formatter = format,
+useScale = attr(varcor, "useSc"), ...)
+
+```
+
+##参数
+
+object
+:  拟合好的LMM模型。  
+
+devianceFUN
+:  用以计算偏差的函数；对`lme4`创建的对象，该参数不应被改变。  
+
+chkREML
+:  可选逻辑值，说明对象是否为一个REML拟合。  
+
+devcomp
+:  对`lme4`而言，总是等价于`object@devcomp`； 这里是一个列表。  
+
+dims
+:  对`lme4`而言，总是等价于`object@devcomp$dims`，一个命名向量或者列表，列表中包含“GLMM”，“NLMM”, “REML”和“nAGQ”，前两个为逻辑标量，后两个通常是FALSE或者数值型。  
+
+mtit
+:  `methTitle(object)`的结果。  
+
+class
+:  通常为`class(object)`。  
+
+famL
+:  一个列表，包含`family`和`link`部分，各为字符；注意标准的`R family` 对象也是可以直接使用的。  
+
+resids
+:  模型残差的数值向量。
+
+digits
+:  非负整数，打印使用的最小数位。  
+
+title
+:  字符串。
+
+…	
+:  可选参数，被传入诸如`residuals()`这些函数中。  
+
+call
+:  例如模型拟合的调用，通过（类）函数`getCall（）`实现。  
+
+long
+:  逻辑值，指明是否输出冗长的结果，例如，如果取值为1的话将会打印所调用函数（` call`）的`control`部分。  
+
+aictab
+:  通常，`AICtab`是`llikAIC( )`结果的一部分。  
+
+varcor
+:  通常是`VarCorr( )`的结果。  
+
+comp
+:  可选…  
+
+formatter
+:  用来格式化数字的函数。  
+
+ngrps
+:  整数（向量），通常为`ngrps(object)`的结果。  
+
+nobs
+:  整数，观测值的数量，如,`nobs`的结果。  
+
+optinfo
+:  通常为`object@optinfo`，优化过程的信息，包括（如果有）警告信息。  
+
+summary
+:  逻辑值。  
+
+useScale
+:  (逻辑值)父模型是否使用标准化的参数？  
+
+##返回值
+
+`llikAIC( )`返回一个列表，包含：  
+
+* logLik:即`logLik(object)`;  
+* AICtab:包含`AIC`，`BIC`，`logLik`，偏差以及`df.residual（）`值的表。  
+
+##示例
+
+```
+## 创建一些 "lme4 标准" 模型 ------------------------------
+fm1 <- lmer(Reaction ~ Days + (Days | Subject), sleepstudy)
+fmM <- update(fm1, REML=FALSE) # -> Maximum Likelihood
+gm1 <- glmer(cbind(incidence, size - incidence) ~ period + (1 | herd),
+data = cbpp, family = binomial)
+gmA <- update(gm1, nAGQ = 5)
+(lA1 <- llikAIC(fm1))
+(lAM <- llikAIC(fmM))
+(lAg <- llikAIC(gmA))
+(m1 <- methTitle(fm1 @ devcomp $ dims))
+(mM <- methTitle(fmM @ devcomp $ dims))
+(mG <- methTitle(gm1 @ devcomp $ dims))
+(mA <- methTitle(gmA @ devcomp $ dims))
+.prt.methTit(m1, class(fm1))
+.prt.methTit(mA, class(gmA))
+.prt.family(gaussian())
+.prt.family(binomial())
+.prt.family( poisson())
+prt.resids(residuals(fm1), digits = 4)
+.prt.resids(residuals(fmM), digits = 2)
+.prt.call(getCall(fm1))
+.prt.call(getCall(gm1))
+.prt.aictab ( lA1 $ AICtab ) # REML
+.prt.aictab ( lAM $ AICtab ) # ML --> AIC, BIC, ...
+V1 <- VarCorr(fm1)
+m <- formatVC(V1)
+stopifnot(is.matrix(m), is.character(m), ncol(m) == 4)
+print(m, quote = FALSE) ## prints all but the first line of .prt.VC() below:
+.prt.VC( V1, digits = 4, formatter = format)
+## 随机效应:
+## Groups Name Std.Dev. Corr
+## Subject (Intercept) 24.740
+## Days 5.922 0.07
+## Residual 25.592
+p1 <- capture.output(V1)
+p2 <- capture.output( print(m, quote=FALSE) )
+pX <- capture.output( .prt.VC(V1, digits = max(3, getOption("digits")-2)) )
+stopifnot(identical(p1, p2),
+identical(p1, pX[-1])) # [-1] : dropping 1st line
+.prt.grps(ngrps = ngrps(fm1),
+nobs = nobs (fm1))
+## --> 观测值数obs: 180, 分组: Subject, 18
+.prt.warn(fm1 @ optinfo) # nothing .. had no warnings
+```
+
+#pvalues
+得到拟合模型的p值
+
+##描述
+
+有关于`lme4`包常被问到的问题包括“我怎样对参数估计量的p值进行计算？”旧版本的`lme4`提供`mcmcsamp`函数，在假设先验分布是平稳的情况下，它会从参数的后验分布中高效的产生一个马尔科夫链蒙特卡洛样本。因为即使在随机效应方差估计值接近0时，也难以建立可靠的`mcmcsamp`方法（例如：https://stat.ethz.ch/pipermail/r-sig-mixed-models/2009q4/003115.html），所以我们撤销了`mcmcsamp`函数的使用（更准确地说，在1.0.0+版本的`lme4`包中不再对其更新）。  
+
+许多用户，包括使用`R`包中依赖于`mcmcsamp`的`aovlmer.fnc`函数的用户，都会因此感到失望。需要p值的用户有许多其它的选择。在下面的列表中，使用标记`MC`的方法可以直接进行模型对比；CI表示置信区间；P表示参数个数或所有模型效应的一系列检验。“\*”表示提供了有限范围的相关系数（这个限制在分组变量小于50时是很重要的）；标记了“+”的表示既适用于线性混合模型又适用于广义线性混合模型。  
+
+*	使用`anova`方法和`drop1`方法中的似然比检验（MC，+）
+*	使用`profile.merMod`和`confint.merMod`可以得到轮廓似然法下的置信区间（CI，+）
+*	使用`bootMer`（或`pbkrtest`包中的`PBmodcomp`方法）方法可以得到参数自助法的置信区间和模型比较（MC/CI，*，+）
+*	使用`RLRsim`包可以进行随机效应的仿真检验（MC，*）
+*	使用`pbkrtest`包中的`KRmodcomp`函数，可以通过Kenward-roger近似对固定效应进行F检验（MC，*）
+*	`car::Anova`和`lmerTest::anova`使用`pbkrtest`包封装了修正的Kenward-Roger检验。`lmerTest::anova`还提供了通过Satterthwaite近似的t检验（P，*）
+*	`afex::mixed`是针对`pbkrtest`和`anova`的另一个封装器，它提供了所有效应的“Type 3”检验。（P，*，+）  
+
+`arm::sim`，或`bootMer`，能被用来计算预测值的置信区间。  
+
+对于`glmer`模型，`summary`的输出结果提供了近似Wald检验的P值；这是广义线性模型的标准步骤，这些检验的所有假设都是有关于对数似然面的形状，以及用卡方分布来近似估计对数似然差分值的准确性。
+当其它所有检验都通不过时，别忘了查看你的P值：http://www.phdcomics.com/comics/archive.php?comicid-905。   
+
+#ranef
+取出随机效应参数估计值  
+
+##描述
+
+一个类函数，用以从拟合好的模型中取出条件形式下的随机效应的参数。对线性混合效应模型而言，条件形式下的随机效应参数就是它的条件均值。  
+
+##用法
+
+```
+## 针对“merMod”类型对象的S3 方法
+ ranef(object, condVar = FALSE,
+    drop = FALSE, whichel = names(ans), postVar=FALSE, ...)
+##针对 “ranef.mer”类型对象的S3方法
+ dotplot(x, data, main=TRUE, ...)
+## 针对 “ranef.mer”类型对象的S3方法
+ qqmath(x, data, main=TRUE, ...
+
+```
+
+##参数
+
+object
+:  任一拟合好的、带有随机效应的模型，通常为一个`merMod`类型对象。  
+
+condVar
+:  可选逻辑参数，指定是否要将随机效应的条件方差-协方差矩阵添加为属性。  
+
+drop
+:  函数默认将返回的成分组织成一个单列数据框的结构，通常以“`（Intecept）`”命名该列，是否要简化，以带命名的向量的形式输出？  
+
+whichel	
+:  字符向量，由分组因子的名称构成，将返回这些因子下的随机效应。  
+
+postVar
+:  `condVar`的（弃用）同义词。  
+
+x
+:  由`ranef`生成的随机效应对象（类型为`ranef.mer`）。
+
+main
+:  是否（在绘图时）在各个子图上方生成一个主标题，指明分组因子？  
+
+data
+:  这个参数是`dotplot`和`qqmath`这类一般性方法所需要的，但这里其实没有用。  
+
+…
+:  这个类函数中可用的其他方法所需要的参数。  
+
+##细节
+
+如果分组因子i有k个水平，模型有j个随机效应,那么`ranef`将返回列表，列表的第i部分包括一个k行j列的数据框。如果`condVar`是TRUE，那么`postVar`属性将会是一个j\*j\*k维的数列。这个数列的第k层是个j\*j维的对称正定矩阵。如果模型只有一个分组因子，那么整个随机效应向量的方差-协方差矩阵，在代入模型参数的估计值和数据之后应该是一个分块对角矩阵，并且这个j*j的矩阵共k个对角分块。对于多个分组因子的情况，`postVar`属性的每一层都是对角分块的条件方差-协方差矩阵，但这个矩阵自身不再是对角分块的了。  
+
+##返回值
+
+一个`ranef.mer`类型的对象，由数据框组成的列表，每一个数据框代表一个分组因子下的所有随机效应。数据框的行数是该分组因子的水平数，列数则是随机效应的该分组因子下的随机效应的维度。  
+
+如果`condVar`参数为TRUE，每一个数据框会带有一个叫做“`postVar`”的属性，它是一个三维、每层对称的数组；每一层包含了分组因子的一个特定水平下的条件方差-协方差矩阵。（历史原因影响了该属性的命名，未来可能会改名为“`condVar`”）。  
+
+当`drop`参数为TRUE时，任何单列的数据框部分会被转化为命名数值向量。  
+
+##注
+
+欲生成一个（列表的）“毛毛虫图”以表示随机效应，在`ranef`(参数`condVar=TRUE`) 的结果
+上应用`dotplot`；`qqmath`则会生成一个Q-Q图的列表。  
+
+##示例
+
+```
+require(lattice)
+fm1 <- lmer(Reaction ~ Days + (Days|Subject), sleepstudy)
+fm2 <- lmer(Reaction ~ Days + (1|Subject) + (0+Days|Subject), sleepstudy)
+fm3 <- lmer(diameter ~ (1|plate) + (1|sample), Penicillin)
+ranef(fm1)
+str(rr1 <- ranef(fm1, condVar = TRUE))
+dotplot(rr1)  ## default
+## 指定“free scales” 使Day变量的效应显得更直观
+dotplot(rr1,scales = list(x = list(relation = 'free')))[["Subject"]]
+if(FALSE) { ##-- condVar=TRUE目前还没有置入多元模型的拟合方法中
+str(ranef(fm2, condVar = TRUE))
+}
+op <- options(digits = 4)
+ranef(fm3, drop = TRUE)
+options(op)
+```
+#refit
+重拟合一个响应变量变化后的merMod类型模型
+
+##描述
+在修改响应向量后，可能要重拟合模型。它会根据模型表现直接对其进行再次优化。
+
+##用法
+```
+    refit(object, newresp, ...)
+
+    ## 类型为”merMod”的S3方法
+    refit(object, newresp=NULL, rename.respnse=FALSE, maxit = 100, ...)
+```
+
+##参数
+object
+:  一个拟合好的模型，其类型通常为`lmerMod`，`refit( )`会用新响应变量再次对它进行拟合。  
+
+newresp
+:  一个（可选）的数值向量。表示和原响应变量有相同长度的新响应变量（可参见“详细说明“中有关于NA值处理的说明）。它也可以是具有单个数值列的数据框，如`simulate(object)`的返回对象。  
+
+rename.response
+:  当重拟合模型时，模型公式和模型框架中的响应变量名称是否应该被`newresp`变量的名称所代替。  
+
+maxit
+:  一个数值标量，目前该参数仅用于广义线性混合模型（GLMMs）中，代表`Pwrss`迭代次数的最大值。  
+...
+:  其它可选参数。
+
+##细节
+
+在修改响应变量后，可能需要重拟合一个模型。虽然用`update( )`也可以做到这一点，但是使用`refit( )`方法会更快。因为它绕过了模型表现的重分析步骤而直接对其进行优化。  
+
+如果你想要在拟合模型上进一步操作（和`update`方法一样），那么令`rename.response=TRUE`是必须的。然而，重拟合的模型还是会和用`update`方法得出的模型稍稍有些不同。特别地，如果新响应变量和原始响应变量的名称不同，则不会更新这些项的组分来反映新响应变量。  
+
+如果`newresp`具有`na.action`的属性，那么它将假设已经从数值向量中移除了NA值。这允许`refit`接受`simulate(object)`的返回对象作为输入对象，即使原响应变量包含NA值。否则，`newresp`参数的长度必须和原始响应变量的长度一致。  
+
+##返回值
+一个类似于`x`的对象，但是它是基于不同响应变量$Y$的拟合结果。  
+
+##另请参阅
+
+[update.merMod]用于更灵活、更具延伸性的模型拟合，[refitML]使用极大似然法对模型进行重拟合。
+
+##示例
+
+```
+## Ex. 1: 使用refit()拟合响应变量矩阵的每一列
+set.seed(101) 
+Y <- matrix(rnorm(1000),ncol=10) 
+## 合并响应变量矩阵第一列和预测变量
+d <- data.frame(y=Y[,1],x=rnorm(100),f=rep(1:10,10)) 
+## (使用check.conv.grad=”ignore”来阻止收敛检验，因为我们使用的是一个错误的例子) 
+## 拟合第一个响应变量
+fit1 <- lmer(y ~ x+(1|f), data = d, control= lmerControl(check.conv.grad="ignore", check.conv.hess="ignore")) 
+## 合并第一个响应变量的拟合值和其它响应变量的拟合值
+res <- c(fit1,lapply(as.data.frame(Y[,-1]), refit, object=fit1))
+ 
+## Ex. 2: 拟合包含NA的模拟数据
+sleepstudyNA <- sleepstudy 
+sleepstudyNA$Reaction[1:3] <- NA 
+fm0 <- lmer(Reaction ~ Days + (1|Subject), sleepstudyNA) 
+##使用模拟数据进行重拟合，能正常运行
+ss0 <- refit(fm0, simulate(fm0)) 
+## ...但是如果模拟多个响应变量时
+## 需要使用na.action=na.exclude使数据长度一致
+fm1 <- lmer(Reaction ~ Days + (1|Subject), sleepstudyNA, na.action=na.exclude) 
+ss <- simulate(fm1, 5) 
+res2 <- refit(fm1, ss[[5]])
+```
+
+#refitML
+用极大似然法重拟合模型
+
+##描述
+使用极大似然法重新拟合（`merMod`）模型。  
+
+##用法
+```
+    refitML(x, ...)
+    ## 用于merMod类型的S3方法
+    refitML(x,optimizer=”bobyqa”,...)
+```
+
+##参数
+x
+:  一个拟合好的`lmerMod`类型的模型。`refitML( )`将依据极大似然法对它重新拟合一次。  
+
+...
+:  可选的其它参数。目前没有使用过这个可选参数。  
+
+optimizer
+：  一个字符串。指定使用哪个优化器。   
+
+
+##细节
+
+这个函数主要用来拟合极大似然法下的线性混合效应模型，其返回结果会用于`anova`中结果作对比。  
+
+##返回值
+
+一个类似`x`的对象，但是是由极大似然法得到的拟合模型。  
+
+##另请参阅
+
+[refit]和[uodate.merMod]中使用了更具延伸性的重拟合方法。  
+
+#rePos               
+`rePos（random-effects positions）`类型的生成器对象
+
+##描述
+rePos类型的生成器对象,用于确定与模型中特定随机效应项相关联的随机效应的位置和次序。
+
+##用法
+
+```
+    rePos( ...)
+```
+
+##参数
+
+...
+:  参数列表（详见“注”）。
+
+##方法
+
+`new(mer=mer)` 创建一个新的`rePos`对象。  
+
+##注
+
+`new`方法的参数必须是命名参数。并且参数类型必须是`merMod`类型。
+
+##另请参阅
+
+[rePos]
+
+#rePos-class
+`rePos`类型
+
+##描述  
+
+一个引用类。用于确定和模型公式中特定随机效应项相关联的随机效应向量的位置。
+
+##扩展
+
+所有引用类都从类型`envRefClass`中扩展、继承方法。  
+
+##示例
+```
+showClass(“rePos”)
+```
+
+#residuals.merMod
+`merMod`对象的残差
+
+##描述
+
+`merMod`对象的残差  
+
+##用法
+
+```
+## “merMod“类型的S3方法
+residuals(object, type = if (isGLMM(object)) "deviance" else "response", scaled = FALSE, ...)
+## 'lmResp' 类型的S3方法
+residuals(object, type = c("working", "response", "deviance", "pearson", "partial"), ...)
+## 'glmResp' 类型的S3方法
+residuals(object, type = c("deviance", "pearson", "working", "response", "partial"), ...)
+```
+
+##参数
+
+object
+:  一个拟合好的`merMod`类型的（广义）线性模型。  
+
+type
+:  残差类型。  
+
+scaled
+:  逻辑值。指示是否用残余标准差（=尺度参数）来标准化残差。  
+
+...
+:  其它参数（从方法兼容性考虑，会忽略该参数）。  
+
+
+##细节
+
+*	`lmerMod`对象和`glmerMod`对象的默认残差类型不同：`lmerMod`对象会使用`residuals.lm`方法，`glmerMod`对象会使用`residuals.glm`方法。特别地，`lmerMod`对象的默认类型是“`response`”，`glmerMod`对象则是“`deviance`”。`type=”partial”`尚不可用。  
+*	注：`residuals.lm`和`residuals.lme`方法的“pearson”残差有不同的释义。前者返回由用户自定义权重的平方根标准化后的值，而不是由残余标准差标准化的值。而后者则返回由标准差估计值标准化后的值（包括在权重参数中指定的任何方差结构的影响）。为了复现`lme`的行为，可令`type=”pearson”`，`scaled=TRUE`。  
+
+#sigma
+提取残余标准差“Sigma”。
+
+##描述
+
+从一个拟合好的模型中提取误差项标准差的估计值、残余标准差（也称作残余标准误差）。  
+
+##用法
+
+```
+## merMod类型的S3方法
+sigma(object, ...)
+```
+
+##参数
+
+object
+:  一个拟合好的模型。  
+
+...
+:  从其他方法中传递过来的其它可选参数（目前没有在我们的两种方法中使用过）。  
+
+##细节
+
+`lme4`包提供了分析`merMod`类型混合效应模型的一系列方法，以及线性模型的`lmList4`类型的列表对象。  
+
+##返回值
+
+通常，对高斯模型，返回误差的标准差估计值（残余标准差），而对更广义的模型中，则返回缺乏解释性的每一自由度的残差平方根。  
+
+##示例
+
+```
+methods(sigma) # 从R 3.3.0起，其返回结果中的方法来自于stats包和lme4包。
+```
+
+#simulate.merMod
+对`merMod`对象的响应变量进行模拟
+
+##描述
+
+对`merMod`类型的拟合模型对象的响应变量进行模拟，例如，来自它所代表的模型。
+
+##用法
+```
+    ## merMod类型的S3方法
+    simulate(object, nsim = 1, seed = NULL, use.u = FALSE, re.form = NA,  
+    ReForm, REForm, REform, newdata=NULL, newparams=NULL, family=NULL,
+    allow.new.levels = FALSE, na.action = na.pass, ...)
+
+    ## ‘formula’类型的S3方法
+    simulate(object, nsim = 1 , seed = NULL, family, weights=NULL,
+    offset=NULL, ...)
+    .simulateFun(object, nsim = 1, seed = NULL, use.u = FALSE, re.form = NA,      
+    ReForm, REForm, REform, newdata=NULL, newparams=NULL,
+    formula=NULL, family=NULL, weights=NULL, offset=NULL,
+    allow.new.levels = FALSE, na.action = na.pass, ...) 
+```
+
+##参数
+
+object
+:  和`lmer`中描述的对象一样，这也是（对`simulate.merMod`而言）一个拟合模型对象或者一个（单边）混合模型公式。  
+
+nsim
+:  正整数标量——待模拟的响应变量个数。  
+
+seed
+:  可选参数。模拟前放在`set.seed`里的种子，目的是为了产生可复现的样本。  
+
+use.u
+:  逻辑值。如果值为TRUE，那么在基于当前随机效应估计值的条件下，进行一次模拟。如果值为FALSE，重新生成服从正态分布的随机效应估计值（偏好于使用`re.form`参数替代`use.u`参数：`use.u=TRUE`等价于`re.form=NULL`（在各种随机效应都存在的条件下），`use.u=FALSE`等价于               `re.form=~0`（在不存在随机效应的条件下））。   
+
+re.form
+:  建立在有无随机效应的条件下的公式。如果值为NULL，则包括所有随机效应；如果值为NA或者~0，则不包括任何随机效应。  
+
+
+ReForm，REForm，Reform
+:  已经被弃用。现在更偏向于使用`re.form`。  
+
+newdata
+:  用来计算预测值的数据框。  
+
+newparams
+:  计算预测值时使用的新参数。和`lmer`或者`glmer`函数中的`start`参数一样需要被指定。它是一个包含theta和beta（用于LMM和GLMM中估计尺度参数）以及sigma的列表。  
+
+formula
+:  和`lmer`中所描述的对象一样，它也是一个（单边）混合模型公式。  
+
+family
+:  正如`glmer`定义的那样，它代表广义线性模型中的分布族。  
+
+weights
+:  和`lmer`或`glmer`中的一样，它表示先验权重。  
+
+offset
+:  和`glmer`中的参数`offset`含义一样。  
+
+allow.new.levels
+:  逻辑值。如果值为FALSE（默认值），则`newdata`中存在新值将会触发错误。如果值为TRUE，则会使用总体内此前未被观测到的值（或NA值）进行预测。  
+
+na.action
+:  如何处理新数据中的NA值：参见[na.fail]。  
+
+...
+:  可选的其他参数：当前还没有被使用过的参数。  
+
+
+##细节
+
+* `simulate`本来应该是用来从一个拟合模型（`merMod`对象）中产生新值的，然而，如果指定了`formula`,`newdata`和`newparams`的参数值，`simulate`将生成一个恰当的模型框架，以从该框架中模拟新值。
+*	`re.form`参数允许用户指定随机效应以何种方式被纳入此次模拟中。包括在`re.form`中的所有随机效应项都会作为条件存在，即这些随机效应的条件模式会被囊括入此次模拟的决定性部分。（如果接受新类别的存在，即`allow.new.levels=TRUE`），这些类别的条件模式会被设置为总体模式，比如，零值会被用在随机效应中）。相反地，没有包括在`re.form`中的随机效应项会成为模拟源，即基于随机效应的方差估计值，每个组都会产生新值。   
+默认行为（令`re.form=NA`）是在不把任何随机效应作为条件的情况下，对所有随机效应的新值进行模拟。
+* 用高斯分布拟合模型，`sigma`表示残余标准差；用伽马分布拟合模型，`sigma`表示形状参数（每个观测i的比例参数值按（形状参数值/观测i的均值）计算得到）；用负二项分布拟合模型，过度离散系数由其分布族确定，例如`simulate(...,family=negative .binomial(theta=1.5))`。  
+
+##另请参阅
+
+用于“simulestimate”的[bootMer]方法，每次重拟合模型都会产生一次模拟。
+
+##示例
+
+```
+## 检验拟合模型是否和CBPP数据集中的0值个数相同    
+    gm1 <- glmer(cbind(incidence, size - incidence) ~ period + (1 | herd), data = cbpp, 
+      family = binomial) 
+    gg <- simulate(gm1,1000) 
+    zeros <- sapply(gg,function(x) 
+    sum(x[,"incidence"]==0)) plot(table(zeros)) 
+    abline(v=sum(cbpp$incidence==0),col=2) 
+    ## 
+    ##基于未拟合模型进行模拟；这时我们不过是复制了原有模型
+    params <- list(theta=0.5,beta=c(2,-1,-2,-3)) 
+    simdat <- with(cbpp,expand.grid(herd=levels(herd),period=factor(1:4))) 
+    simdat$size <- 15 
+    simdat$incidence <- sample(0:1,size=nrow(simdat),replace=TRUE) 
+    form <- formula(gm1)[-2] 
+    simulate(form,newdata=simdat,family=binomial, newparams=params)
+```
+
+#sleepstudy
+一项剥夺睡眠研究中的反应时间
+
+##描述
+
+一项剥夺睡眠研究的研究,其对象每天的平均反应时间。研究开始之前研究对象睡眠时间正常。从第一天晚上开始，研究对象的睡眠时间被限制为每晚3小时。数据集中的观测值代表每天对每个研究对象一系列的测试的平均反应时间。
+
+##数据集格式
+
+数据框，以下3个变量各有180个观测值。  
+
+Reaction
+:  平均反应时间 (毫秒)  
+
+Days
+:  剥夺睡眠的天数  
+
+Subject
+:  研究对象编号  
+
+
+##细节
+
+这些数据来源于Belenky et al. (2003)的研究，研究对象连续10天被剥夺睡眠。  
+
+
+##参考
+
+Gregory Belenky, Nancy J.Wesensten, David R. Thorne, Maria L. Thomas, Helen C. Sing, Daniel P.  
+Redmond, Michael B. Russo and Thomas J. Balkin (2003) Patterns of performance degradation andrestoration during sleep restriction and subsequent recovery: a sleep dose-response study. Journalof Sleep Research 12, 1–12.
+
+##示例
+
+```
+str(sleepstudy)
+require(lattice)
+xyplot(Reaction ~ Days | Subject, sleepstudy, type = c("g","p","r"),
+index = function(x,y) coef(lm(y ~ x))[1],
+xlab = "Days of sleep deprivation",
+ylab = "Average reaction time (ms)", aspect = "xy")
+(fm1 <- lmer(Reaction ~ Days + (Days|Subject), sleepstudy))
+(fm2 <- lmer(Reaction ~ Days + (1|Subject) + (0+Days|Subject), sleepstudy))
+```
+
+#subbars
+替换`|`
+
+##描述
+
+将混合模型公式中的`|`逐个替换为`+`，因此参数名为`term`。此函数提供了一个可用于`model.frame`函数的表达式。  
+
+##用法
+
+```
+    subbars(term)
+```
+
+##参数
+
+term
+:  混合模型公式。  
+
+##返回值
+    
+将`|`替换为`+`的公式。  
+
+##参考
+    
+[formula],[model.frame], [model.matrix]。  
+
+其他功能: [findbars], [nobars], [mkRespMod], [mkReTrms], [nlformula]。  
+
+
+##示例
+
+```
+subbars(Reaction ~ Days + (Days|Subject)) ## => Reaction ~ Days + (Days + Subject)
+```
+
+#troubleshooting
+故障诊断与排除
+
+##描述
+
+这一页说明旨在总结拟合[gn]lmer模型过程中的一些常见问题，以及如何排查错误。  
+
+* **Failure to converge in (xxxx) evaluations** \ 	优化器在函数求值过程中达到了它的最大次数。欲更改运算上限，使用`[ng]lmerControl `中的`optControl`参数--对`Nelder_Mead`和`bobyqa`，相关参数是`maxfun`；对于`optim`和`optimx`封装的优化器，包括`nlminbwrap`，使用`maxit`；对`nloptwrap`，则是`maxeval`。  
+
+* **Model failed to converge with max|grad| …**\ 	拟合的（RE）ML估计具有过大的标准化梯度。试着：
+  + 以现有的估计值作为初始值重新拟合参数：得到一致结果（且没有警告），则这是一次误警；
+	+ 更改优化器：得到一致的结果，说明这个估计没有什么问题；对不同的参数估计得到相似对数似然，说明参数估计的结果比较糟糕（可能由于模型设定错误或过拟合造成）；
+	+ 计算估计参数在其邻域的偏差值以检验lme4确实找到了局部最优点。
+* **Hessian is numerically singular: parameters are not uniquely determined**\ 	最大似然或REML估计值处的海赛矩阵（曲率矩阵的逆矩阵）具有非常大的特征根，暗示似然轮廓表面朝某些方向接近平坦。模型设定可能有误，或者过度的标准化（参见`“Model is nearly unidentifiable”`）。
+* **Contrasts can be applied only to factors with 2 or more levels**\ 		模型中，一个或多个分类自变量具有少于两个因子水平。这可能是由于用户在建模前、将这些自变量转化为因子型时出错，或者可能是由于某些因子水平由于其它自变量中出现NA而被移除。重新检查每个因子各个水平下的数据点个数，找到罪魁祸首：`lapply(na.omit(df[ , vars]), table)`。(这里df指数据框`data.frame`，`vars`指你的自变量的名称)。
+
+#VarCorr
+从拟合好的模型中提取方差和相关系数
+
+##描述
+
+这个函数会计算方差、标准差的估计值，以及混合效应模型中的随机效应间的相关系数，并返回`merMod`类型对象。
+
+##用法
+
+```
+## S3 method for class ‘merMod’
+VarCorr(x, sigma=1, ...)
+
+## S3 method for class ‘VarCorr.merMod’
+as.data.frame(x, row.names=NULL, 
+optional = FALSE, order=c(“cov.last”,”lower.tri”), ...)
+    
+## S3 method for class ‘VarCorr.merMod’
+print(x, digits=max(3, getOption(“digits”) - 2), 
+comp = “Std.Dev.”, formatter = format, ...)
+```
+
+##参数
+x
+:  调用`VarCorr`函数时，它是一个拟合好的模型对象，通常是一个从`merMod`类型继承的对象。调用`as.data.frame`函数时，它是从一个`VarCorr`函数返回的`VarCorr.merMod`类型的对象。  
+
+sigma
+:  一个用作标准差的乘数的可选数值。
+
+digits
+:  一个指定有效数字位数的可选整数值。  
+
+order
+:  若要在数据框中按方差或者标准差放在最前，随机效应之间的协方差或者相关系数放在最后进行排列，则赋值`cov.last`给`order`参数。或者若想要按照下三角形的顺序排列方差、协方差矩阵，则赋值`lower.tri`给`order`参数。  
+
+row.names，optional
+:  忽略这两个参数：这对`as.data.frame`函数是必要的。 
+
+... 
+:  在调用`as.data.frame`时，必须要忽略这两个参数，但在打印结果时，可以将这两个参数值传递给`print( )`。
+
+comp
+:  一个字符（`character`）向量，指定要打印的成分。更简单的做法是，将参数值传递给`formatVC( )`。
+
+formatter 
+:  参数值必须是用于格式化数值的函数（`function`）。更简单的做法是，将参数值传递给`formatVC( )`。  
+
+##细节
+
+`VarCorr.merMod`类型对象的打印方式有参数`digits`（明确打印时的精度位数）和`comp`是可选的。后者是一个可以对`“Variance”`和`“Std.Dev.”`进行任意组合的字符向量，通过指定`comp`参数值为方差、标准差或两者，来决定最后打印哪个成分。
+
+##返回值
+
+返回一个类型为`VarCorr.merMod`的对象。对象的内部结构是一个矩阵列表，它包含了对随机效应进行分组的项。对于每一个分组项，将其标准差和相关系数矩阵分别作为协方差矩阵的属性`“stddev”`和`“correlation”`进行存储，而残余标准差则作为属性`“sc”`被存储（在调用`glmer`进行拟合时，这个属性存储了模型的尺度参数）。  
+
+调用`as.data.frame`函数会产生一个数据框，数据框中有一行值表示方差参数或者协方差参数（另有一行则表示残差项）以及以下各列：  
+
+* grp        分组变量
+* var1        第一个变量
+* var2        第二个变量（方差参数值显示为NA）
+* vcov    方差或者协方差
+* sdcor    标准差或者相关系数
+
+##作者
+
+`lme4`包中的`VarCorr`函数是Jose Pinheiro和Douglas Bates根据`nlme`包中的`VarCorr`函数改进而来的。  
+
+
+##另请参阅
+
+[lmer]，[nlmer]
+
+##示例
+
+```
+  data(Orthodont, package=”nlme”)
+  fm1 <- lmer(distance ~ age + (age|Subject), data = Orthodont)
+  (vc <- VarCorr(fm1))  ## 默认打印时输出的是标准差和相关系数    
+## 打印出方差和标准差
+  print(vc, comp=c(“Variance”, ”Std.Dev.”), digits=2)
+## 只打印出方差
+  print(vc,comp=c(“Variance”))
+  as.data.frame(vc)
+  as.data.frame(vc, order=”lower.tri”)
+```
+
+#varianceProf
+把`profile`函数返回结果中的标准差转化为方差标量
+
+##描述
+
+将混合效应模型的`profile`返回结果中的标准差转化为方差标量，比如，`x<-profile(lmer(...), ...)`。  
+
+##用法  
+
+```
+varianceProf(x,ranef=TRUE)
+```
+
+##参数    
+
+x
+:  一个混合效应模型的`profile`对象。  
+
+ranef
+:  逻辑值。指示所有的`sigma`是否应该被转化为方差标量。查看`logProf`。
+
+##返回值
+
+一个经转化后的混合效应模型的`profile`对象。 
+
+##另请参阅
+
+[profile]及其方法，sigma的对数转化函数[logProf]。
+
+#vcconv
+
+（协）方差的结构表示方法之间的转化
+
+##描述
+
+在（协）方差结构的表示方法之间进行转化。查看源代码可以得到更多详细信息。
+
+##用法
+
+```
+    mlist2vec(L)
+    vec2mlist(v, n = NULL, symm = TRUE)
+    vec2STlist(v, n = NULL)
+    sdcor2cov(m)
+    cov2sdcor(v)
+    Vv_to_Cv(v, n = NULL, s = 1)
+    Sv_to_Cv(v, n = NULL, s = 1)
+    Cv_to_Vv(v, n = NULL, s = 1)
+    Cv_to_Sv(v, n = NULL, s = 1)
+```
+
+##参数
+
+L
+:  对称列表，上三角方阵或者下三角方阵。  
+
+v
+:  包含对称或三角矩阵的下三角元素（包括对角元素）的连接向量。  
+
+n
+:  返回矩阵的行数（和列数）。  
+
+symm
+:  逻辑值。如果为TRUE，则返回对称矩阵；如果为FALSE，则返回下三角矩阵。  
+
+m
+:  标准差-相关系数矩阵。  
+
+V
+:  协方差矩阵。  
+
+s
+:  尺度参数（Scale parameters）。
+
+##细节   
+
+* `mlist2vec` 将矩阵列表转化为下三角阵的连接向量，其属性给出原始列表中每个矩阵维数。该属性可以用来重建矩阵。返回每个矩阵的一个三角阵中的串联元素。属性`“clen”`给出了每个矩阵的维数。  
+
+*	`vec2mlist` 将连接向量转化为矩阵列表（下三角阵或者对称矩阵）。这些矩阵能囊括Cholesky因子向量、协方差矩阵或相关系数阵（对角元素是标准差的相关系数阵）。  
+
+*	`vec2STlist` 将连接向量转化为ST矩阵列表。  
+
+*	`sdcor2cov` 将标准差-相关系数阵转化为协方差矩阵。将“sdcor”格式（对角元素为标准差，非对角元素为相关系数）的矩阵转化为方差-协方差矩阵。  
+
+*	`cov2sdcor` 将协方差矩阵转化为标准差-相关系数矩阵（例如，对角元素为标准差，非对角元素为相关系数）。  
+
+*	`Vv_to_Cv` 将方差-协方差矩阵转化为相关协方差因子阵。返回元素为相对协方差因子阵元素的向量。  
+
+*	`Sv_to_Cv` 将标准差-相关系数阵转化为相关协方差因子阵。返回相关协方差因子阵中的下三角元素向量。  
+
+*	`Cv_to_Vv` 将相关协方差因子阵转化为方差-协方差阵。从没有标准化的Cholesky向量转化为（可能标准化了的）方差-协方差矩阵。返回方差-协方差阵的下三角元素向量。  
+
+*	`Cv_to_Sv` 将相关协方差因子阵转化为标准差-相关系数阵。从没有标准化的Cholesky向量转化为`sd-cor`向量。返回标准差-相关系数阵的下三角元素向量。  
+
+
+##返回值
+
+（协）方差结构
+
+##示例
+
+```
+vec2mlist(1:6)
+mlist2vec(vec2mlist(1:6)) # 逆转化的近似
+```
+#VerbAgg
+“言语攻击”项目的反应数据集
+
+##描述
+
+这些是关于言语攻击的问卷的项目回应情况。这些数据被用于De Boeck and Wilson的“Explanatory Item Response Models (Springer, 2004)”一书中，用来解释不同类型的项目反应模型。
+
+##数据集格式
+
+这是一个有7584个观测值，13个变量的数据框。  
+
+Anger
+:  通过状态-特质愤怒表达表（STAXI）测试得到的调查对象的愤怒特质得分。  
+
+Gender
+:  调查对象的性别。一个有“M”和“F”两个水平的因子变量。  
+
+item
+:  一个因子变量。问卷上的项目。  
+
+resp
+:  调查对象对项目的反应——一个有序因子，其水平顺序是no<perhaps<yes。  
+
+id
+:  一个因子变量。调查对象的身份标识。  
+
+btype
+:  行为表现类型——一个有`“curse”`，`“scold”`和`“shout”`三个水平的因子。  
+
+situ
+:  状态类型——一个有`“other”`和`“self”`两个水平的因子，分别表示责备他人、自责。  
+
+mode
+:  行为模式——一个有`“want”`和`“do”`两个水平的因子。  
+
+r2
+:  项目的两种反应——一个有`“N”`和`“Y”`两个水平的因子。  
+
+ 
+##来源
+
+http://bear.soe.barkeley.edu/EIRM
+
+##参考
+
+De Boeck and Wilson (2004), Explanatory Item Response Models, Springer
+
+##示例
+
+```
+str(VerbAgg)
+## 展示如何定义r2 :=h(resp)
+with(VerbAgg, stopifnot(identical(r2,{
+r <- factor(resp, ordered=FALSE); levels(r) <- c(“N”, “Y”, “Y”); r})))
+
+        xtabs(~item + resp, VerbAgg)
+        xtabs(~btype + resp, VerbAgg)
+        round(100*ftable(prop.table(xtabs(~situ + mode + resp, VergAbb), 1:2), 1))
+person <- unique(subset(VerbAgg, select = c(id, Gender, Anger))) 
+require(lattice) 
+densityplot(~ Anger, person, groups = Gender, auto.key = list(columns = 2), xlab = "Trait Anger score (STAXI)")
+if(lme4:::testLevel() >= 3) { ## takes about 15 sec 
+print(fmVA <- glmer(r2 ~ (Anger + Gender + btype + situ)^2 +
+(1|id) + (1|item), family = binomial, data = VerbAgg), corr=FALSE) 
+} 
+## much faster but less accurate 
+print(fmVA0 <- glmer(r2 ~ (Anger + Gender + btype + situ)^2 + (1|id) + (1|item), family = binomial, data = VerbAgg, nAGQ=0L), corr=FALSE)
+```

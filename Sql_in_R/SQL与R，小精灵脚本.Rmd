@@ -1,0 +1,168 @@
+---
+title: "借助RSQLite包在R中执行SQL语句"
+author: "王柳盈"
+date: "2017年1月23日"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+###SQL:一种与数据库通信的语言
+
+关系型数据库（RDBMS）是基于关系模型的特定类型数据库管理管理系统，它的强大在于足够通用和灵活，可以保存**所有**不同类型的数据结构。目前流行的RDBMS有Oracle, MySQL, Microsoft SQL Server, SQLite等。
+
+SQL则是与RDBMS通信的**通用**语言，在刚刚提到的所有DBMS里，同一句SQL语句总能得到相同的结果。
+
+SQL语言可用于如下任务：
+
+* *数据控制语言(Data Control Language, DCL)* 进行精细的用户权限定义
+* *数据定义语言(Data Definition Language, DDL)* 定义数据结构及其关系 
+* *数据操作语言(Data Manipulation Language, DML)* 填写和提取信息
+* *事务控制语言(Transacion Control Language,TCL)* 提交或回滚之前的查询操作
+
+
+……好我猜大家看定义已经看烦了（其实是我不想写了），说了这么多其实中心思想就是：**这货很有用！** 让我们赶紧进入正题吧！
+
+###RSQLite
+在R中有多个可以连接DBMS的包，最常见的是RSQLite和RODBC。后者需要依赖ODBC(Open Database Connectivity， 开放数据库连接)驱动，用人话说就是用之前还要装一些驱动程序，所以本文我们不用它！但是它也很好用，同样可以用来处理CSV，XLS/XLSX格式（导入EXCEL文件就要用它啦~）。我们使用RSQLite包，它依赖于R中原有的DBI组件，是迄今为止唯一能做到**跨多个平台开机即用**的组件包。
+
+###示例数据
+
+我们用的数据是由Francisco S. Velazquez采集的Pokemon数据，真是无（meng）聊（dao）透（bao）顶（zha）。
+
+###开工！
+
+####连接
+
+首先我们要做的当然是加载package连接到数据库啦
+```{r}
+library(RSQLite)
+sqlite <- dbDriver("SQLite")
+file.exists("pokedex.sqlite")
+con <- dbConnect(sqlite, "pokedex.sqlite")
+```
+dbDriver用来指定所使用的驱动，dbConnect用来建立连接信息
+
+####一些简单操作
+
+有一些简单操作其实不需要用到SQL语言，但是有必要交代一下
+```{r,eval=FALSE}
+dbGetInfo(con)#获取数据库基本信息
+dbListTables(con)#列出数据库中的所有表
+
+##事务控制
+dbBeginTransaction(con)#设置保存点
+dbRollback(con)#回滚操作
+dbCommit(con)#提交操作
+```
+解释一下事务控制。一般而言，我们对数据库发出的修改命令都是永久性的，但事务控制支持我们设置一个保存点，然后对数据进行临时修改，如果发生错误，使用回滚命令即可回复到最近一个保存点；如确认进行修改，则可进行提交。
+
+```{r, eval=FALSE}
+
+pokemon <- dbReadTable(con, "pokemon")#将数据库中的表读入R并存储
+dbWriteTable(con, "test", pokemon)#直接将一张表写入数据库
+dbExistsTable(con, "test")#查看某表是否存在
+dbRemoveTable(con, "test")#删除这张表
+##查看数据类型
+dbDataType(con, pokemon$id)
+dbDataType(con, pokemon$base_experience)
+```
+
+####用到SQL语言的查询
+
+具体套路就一个，先把SQL语句写成字符串格式，然后用dbGetQuery()发送查询。
+```{r,eval=FALSE}
+sql <- "SQL language"
+dbGetQuery(con,sql)
+```
+
+除了用户权限的设定DCL，在SQLite驱动下无法实现，其它所有的SQL语句都可以用这个思路实现。这里仅给出一些例子供大家复习，SQL的水太深了，更多细节大伙儿自个探索哈！
+
+
+我们可以用SQL创建新的表、在表中插入值，或对表中数据进行修改：
+```{r}
+#创建表 
+sql <- "CREATE  TABLE  mytest (
+id INTEGER  NOT  NULL  ,
+identifier VARCHAR(100) NOT  NULL  ,
+generation_id INTEGER NOT  NULL  ,
+evolution_chain_id INTEGER NOT NULL  ,
+PRIMARY  KEY  (id)
+) ;"
+dbGetQuery(con, sql)
+dbReadTable(con,"mytest")
+
+#往表中填数据
+sql <- "INSERT INTO mytest (id, identifier,
+              generation_id, evolution_chain_id)
+        VALUES  (1, 'bulbasaur', 1, 1),
+                (2, 'ivysaur', 1, 1),
+                (3, 'venusaur', 1, 1),
+                (4, 'charmander', 1, 2),
+                (5, 'charmenleon', 1, 2);"
+dbGetQuery(con, sql)
+dbReadTable(con,"mytest")
+
+#对表进行修改
+sql <- "ALTER  TABLE  mytest ADD  COLUMN  color_id INT  ; "
+dbGetQuery(con, sql)
+dbReadTable(con,"mytest")
+
+#删除某行数据
+sql <- "DELETE  FROM  mytest WHERE  identifier = 'bulbasaur' ;"
+dbGetQuery(con, sql)
+dbReadTable(con, "mytest")
+
+#删除表
+sql <- "DROP TABLE mytest"
+dbGetQuery(con, sql)#也可以用dbRemoveTable()方法
+```
+
+最好用的就是各种检索，各种join
+```{r}
+#检索体重超过4000的pokemon
+sql <- "SELECT * FROM pokemon
+        WHERE weight >=4000 ;"
+dbGetQuery(con, sql)
+
+#检索名字中带有Nido的pokemon
+sql <- "SELECT identifier FROM pokemon_species
+        WHERE identifier LIKE '%Nido%' ;"
+dbGetQuery(con, sql)
+
+#检索体重超过4000的pokemon（联合表查询）
+sql <- "SELECT pokemon.id, identifier, height, weight FROM pokemon
+        INNER JOIN pokemon_species 
+          ON pokemon.species_id = pokemon_species.id
+        WHERE weight >= 4000 ;"
+dbGetQuery(con, sql)
+
+#按种类计算pokemon的平均身高、体重并列出身高超过50的pokemon
+sql <- "SELECT identifier, AVG(height), AVG(weight) FROM pokemon
+        INNER JOIN pokemon_species
+          ON pokemon.species_id = pokemon_species.id
+        GROUP BY pokemon.species_id
+          HAVING AVG(height) >= 50 ;"
+dbGetQuery(con,sql)
+
+
+```
+
+`dbGetQuery()`还有一个孪生兄弟叫`dbSendQuery()`,但是这个兄弟比较懒，`dbGetQuery()`会将返回值整理成`data.frame`输出，`dbSendQuery()`则不会输出，本次都要它老婆`fetch()`来敲打它一下下才会把结果吐出来。
+```{r,eval=FALSE}
+test <- dbSendQuery(con, sql)
+fetch(test)
+```
+
+最后，一定要记得关闭数据库哦！
+```{r}
+dbDisconnect(con)
+```
+
+###补充
+
+好啦，这个萌到爆炸的数据库送给你们~
+https://github.com/kikin81/pokemon-sqlite/blob/master/pokedex.sqlite

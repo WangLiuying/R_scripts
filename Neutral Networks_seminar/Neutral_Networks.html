@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>神经网络那些事儿</title>
+    <meta charset="utf-8">
+    <meta name="author" content="王柳盈" />
+    <link rel="stylesheet" href="zh-CN.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# 神经网络那些事儿
+## The Element of Statistical Learning: chapter 11
+### 王柳盈
+
+---
+
+
+
+
+background-image: url(https://timgsa.baidu.com/timg?image&amp;quality=80&amp;size=b9999_10000&amp;sec=1493180919686&amp;di=f06311e24673ecf0cde3a2e1394ccc95&amp;imgtype=0&amp;src=http%3A%2F%2Fimage.sowm.cn%2F3aQjqa.jpg)
+background-size:90%,90%
+???
+
+图片来源：[科技猎-神经网络概念篇](http://www.kejilie.com/36dsj/article/3ueUR3.html)
+
+---
+class:center
+
+##目录
+
+.left[
+- 神经网络的前身：投影寻踪回归
+
+- 神经网络(vanilla ver.-BP)
+
+- 卷积神经网络-案例：手写邮编识别
+
+- 贝叶斯神经网络-案例：NIPS大赛（2006）
+]
+
+---
+
+###投影寻踪回归 Projection Pursuit Regression
+
+####模型设定
+
+`\(X\)` p维列向量 `\(Y\)` 因变量
+`$$f(X)=\sum_{m=1}^Mg_m(\omega_m^TX)$$`
+
+--
+
+- additive model
+-  `\(\omega_m \quad m=1,2,...,M\)` 单位向量
+- `\(V_m=\omega_m^TX \quad V_m\)` 是 `\(X\)` 在 `\(\omega_m\)` 上的投影
+- `\(g_m(.)\)` 称为岭函数（ridge function）
+
+`$$f(X)=\sum_{m=1}^Mg_m(V_m)$$`
+--
+需估计参数： `\(g_m, \omega_m\)`
+
+---
+
+
+
+这里的 `\(f(X)\)` ：
+
+`$$f(X)=\sum_{m=1}^Mg_m(\omega_m^TX)$$`
+
+`{{通用逼近器（universal approximator）}}`
+
+--
+
+如果 `\(M\)` 可取任意大，则PPR模型适用于逼近**任何**连续函数（in `\(R^p\)`）
+
+
+e.g.对于交叉项 `\(X_1X_2\)`
+`$$[(X_1+X_2)^2-(X_1-X_2)^2]/4$$`
+`$$\omega_1=\frac{1}{\sqrt{2}}(1,1)^T  \quad g_1(V)=V^2/4$$`
+`$$\omega_1=\frac{1}{\sqrt{2}}(1,-1)^T  \quad g_1(V)=-V^2/4$$`
+
+--
+
+M=1时, `\(Y=g(\omega^TX)+u \quad E(u|X)=0\)`。 single index model,在计量经济中有重要应用
+
+`{{除了M=1的情形，PPR结果较难解释。故多用于预测。}}`
+---
+
+####训练过程：
+
+求解： `\(min \sum_{i=1}^N[y_i-\sum_{m=1}^Mg_m(\omega_m^TX)]^2 \quad over   \quad g_m , \omega_m\)`
+
+
+--
+
+* 最初：仅有一项（M=1），初始 `\(\omega_1\)` ；
+
+* a. 给定 `\(\omega\)` ，选择 `\(g\)` :
+
+一维 smoothing 问题，e.g. smoothing spline, local regression（要求：可导）
+
+* b. 给定 `\(g\)` ，选择 `\(\omega\)` :
+
+  + Gauss-Newton Search:使用泰勒级数展开式近似代替非线性回归模型
+
+`$$g(\omega^Tx_i)=g({\omega_{old}}^Tx_i)+g'({\omega_{old}}^Tx_i)(\omega-\omega_{old})^Tx_i$$`
+`$$\sum_{i=1}^N[y_i-g(\omega^Tx_i)]^2=\sum_{i=1}^Ng'({\omega_{old}}^Tx_i)^2[({\omega_{old}}^Tx_i+\frac{y_i-g({\omega_{old}}^Tx_i)}{g'({\omega_{old}}^Tx_i)})-\omega^Tx_i]^2$$`
+
+.footnote[Hint:regression]
+
+
+---
+
+* 重复a. b. 直至 `\(g,\omega\)` 收敛
+
+--
+
+* 下一阶段：增加一组 `\((g_m,\omega_m)\)`
+
+* 停止条件：M+1并不能显著提升预测效果
+
+--
+* 其它要点：
+
+  + 在步骤a中，由于后续使用了g的泰勒展开形式，所以g的可导性质将大大简化计算，推荐 local regression 和 smothing splines。
+
+  + 为了减少计算量，一般在a、b多次重复迭代中，只调整g，而不调整 `\(\omega\)` （i.e.仅在第一次迭代中确定权重 `\(\omega\)` ）
+
+  + 判断停止条件和预测效果时使用cross-validation。
+
+--
+
+虽然直觉上PPR方法通用、抗扰性强，但实际中并未得到广泛应用，这可能是因为在1981年这种方法提出时，它的计算能力需求远远超出了当时计算机的技术发展。但它的主要思想却在神经网络领域得到重现。
+
+---
+
+### BP神经网络（vanilla ver.）
+
+
+
+.pull-left[
+
+为了简便说明，这里以 **单层感知器single layer perceptron** or **单隐藏层反向传播网络single hidden layer back-propagation network** 为例
+
+
+
+
+神经网络可用于回归，同时预测多个因变量
+
+`\(Y_i \quad i=1,2,...K\)`
+
+也可用于K类判别
+
+`\(Y_i=Pr(K=k)\)`
+]
+.pull-right[![Right-aligned image](./捕获2.png)]
+
+.bottom[
+
+`$$Z_m=\sigma(\alpha_{0m}+{\alpha_m}^TX) \qquad m=1,2,...,M$$`
+`$$T_k=\beta_{0k}+{\beta_k}^TZ \qquad Z=(Z_1,Z_2,...,Z_M) \quad k=1,2,...K$$`
+`$$f_k(X)=g_k(T) \qquad T=(T_1,T_2,...,T_K) \quad k=1,2,...K$$`
+]
+---
+
+* `\(f_k(.)\)` 预测为第k类的概率
+
+* `\(\sigma\)` ：
+
+  + 通常，取sigmoid函数： `\(\sigma(v)=\frac{1}{1+e^{-v}}\)`
+
+  + 或使用 Gaussian radial basis functions -&gt; radial basis function network（chapter6）。
+
+* `\(g_k\)` :
+
+  + 回归问题中常用 identity function `\(g_k(T)=T_k\)`
+
+  + 判别分析问题：早期也使用identity,后来使用softmax `\(g_k(T)=\frac{e^{T_k}}{\sum_{l=1}^Ke^{T_l}}\)`
+
+---
+
+#### 神经网络拟合
+
+* 待估参数：weights：
+
+   `\(\alpha_{0m},\alpha_m;m=1,2,...,M\)`
+
+   `\(\beta_{0k},\beta_k;k=1,2,...,K\)`
+
+--
+
+* 准则：
+
+  `\(R(\theta)=\sum_{k=1}^K\sum_{i=1}^N(y_{ik}-f_k(X_i))^2\)`
+
+--
+
+  `\(R(\theta)=-\sum_{i=1}^N\sum_{k=1}^Ky_{ik}logf_k(X_i)\)` 交叉熵
+  
+  `\(G(X)=argmax_kf_k(X)\)`  
+
+--
+  
+* 求解：最速下降法
+
+---
+
+
+#### 神经网络与PPR
+
+当隐含层为1层时，神经网络即“限制 `\(g_m\)` 形式为sigmoid函数”的PPR
+
+由于这一限制，为了达到相近的预测效果，通常神经网络需要用20~100个节点，而PPR仅需要M=5~10。
+
+**最速下降法不再详述**
+
+可以采用**批量学习**或**在线学习**。
+
+---
+
+
+#### 神经网络建模注意事项
+
+1. 初始值选择：一般随机生成接近 `\(0\)` 的 `\(\omega_0\)`
+
+  由于使用sigmoid函数， `\(\omega\)` 越接近0意味着接近线性
+    
+2. 过拟合
+
+  + 使用验证集监视 `\(R(\theta)\)` 的变化
+
+  +  weight decay 权值衰减-倾向朝0收缩 `\(\omega\)` 
+    
+    `$$J(\theta)=\sum_{km}{\beta_{km}}^2+\sum_{ml}{\alpha_{ml}}^2 \qquad minR(\theta)+ \lambda J(\theta)$$`
+  
+  +  weight decay 权消去法-倾向朝0收缩 `\(\omega\)` 
+    
+    `$$J(\theta)=\sum_{km}\frac{{\beta_{km}}^2}{1+{\beta_{km}}^2}+\sum_{ml}\frac{{\alpha_{ml}}^2 }{1+{\alpha_{km}}^2}  \qquad minR(\theta)+\lambda J(\theta)$$`
+  
+ + `\(\lambda\)`  选取-利用交叉验证方法
+
+---
+
+class:center,middle
+
+
+![over-fit](./捕获8.png)
+
+---
+
+3. 输入：需标准化 `\(X\sim{(0,1)}\)` ,此时所选 `\(\omega_0\in[-0.7,0.7]\)`
+
+4. 隐藏单元和隐藏层的数目：
+
+  + unit： 可多不可少，通常5-100；
+  + layers： 依模型背景、相关领域知识和实验决定，一般一个层刻画一个特征。
+    
+5. 多个最小值的问题：
+
+  由于 `\(R(\theta)\)` 非凸，通常具有多个局部极小值；
+  
+  解决方案：
+  
+  + a. 尝试使用多种初始值，取最终 `\(R(\theta)+\lambda J(\theta)\)` 最小者；
+  
+  + b. 使用多个模型的预测结果平均值 Ripley 1996
+  
+  + c. bagging 
+  
+---
+
+### 卷积神经网络
+
+识别手写邮编案例。在这个例子中，本文先后尝试了五种神经网络：
+
+1. 无隐藏层
+
+2. 一个隐藏层+12个隐藏节点
+
+3. 两个隐藏层+local connectivity
+
+4. 两个隐藏层+local connectivity with weight sharing
+
+5. 两个隐藏层+local connectivity, two levels of weight sharing
+
+--
+
+.footnote[**local connectivity 局部感知** + **weight sharing 权值共享** ——&gt;卷积神经网络]
+
+.bottom[![local connectivity](http://www.36dsj.com/wp-content/uploads/2015/03/511-600x224.jpg)]
+
+---
+
+
+![illustration](./捕获4.png)
+
+---
+
+
+![table:comparasion](./捕获5.png)
+
+.bottom[
+![graph](./捕获6.png)
+]
+
+
+---
+
+#### 实际应用中CNN的多样设计
+
+![CNN2](http://www.36dsj.com/wp-content/uploads/2015/03/122-600x240.png)
+
+
+
+.pull-right[
+DeepID网络结构是香港中文大学的Sun 
+Yi开发出来用来学习人脸特征的卷积神经网络。每张输入的人脸被表示为160维的向量，学习到的向量经过其他模型进行分类，在人脸验证试验上得到了97.45%的正确率，更进一步的，原作者改进了CNN，又得到了99.15%的正确率。
+]
+
+---
+
+
+### 贝叶斯神经网络
+
+
+
+2003年NIPS(Neutral Information Processing Systems)
+
+Neal and Zhang(2006):
+
+a. a feature selection and pre-processing
+
+b. neural network model
+
+c. the Bayesian inference for the model using MCMC
+
+![Bayesian neutral network](./捕获7.png)
+
+---
+
+
+Neal and Zhang(2006)
+
+
+先验概率：diffuse Gaussian priors
+
+贝叶斯后验概率：
+
+`$$Pr(\theta|X_{tr},y_{tr})=\frac{Pr(\theta)Pr(y_{tr}|X_{tr},\theta)}{\int Pr(\theta)Pr(y_{tr}|X_{tr},\theta)d\theta}$$`
+
+预测：
+
+`$$Pr(Y_{new}|X_{new},\theta)=\int Pr(Y_{new}|X_{new},\theta)Pr(\theta|X_{tr},y_{tr})d\theta$$`
+
+计算方法：MCMC（Markov Chain Monte Carlo）
+
+---
+
+class:center,middle
+
+
+结束啦没有啦自己看书啦
+    </textarea>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false
+});
+if (window.HTMLWidgets) slideshow.on('showSlide', function (slide) {setTimeout(function() {window.dispatchEvent(new Event('resize'));}, 100)});</script>
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+  tex2jax: {
+    skipTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+  }
+});
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>

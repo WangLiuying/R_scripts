@@ -1,0 +1,1650 @@
+---
+title: "第11章 数据库操作"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+在前面的章节中，你已经学习了面向对象编程的基本概念，包括类和方法，以及它们在 R 中是如何通过方法分派由泛型函数连接起来的。你也掌握了 S3、S4、RC 和 R6 的基本用法，包括如何定义类和泛型函数以及对特定的类实施相应的方法。
+
+在掌握了 R 的大部分重要特性之后，我们继续深入，探讨更实用的主题。本章，我们开始讨论怎样用 R 来操作数据库，这大概是许多数据分析项目的第一步：从数据库中提取数据。具体而言，本章涉及以下内容：
+
+* 了解关系型数据库
+* 使用 SQL 工具，例如 SQLite、MySQL 对关系型数据库进行查询
+* 操作非关系型数据库，如 MongoDB 和 Redis
+
+#11.1操作关系型数据库
+
+在前面的章节中，我们使用一系列内置函数，比如 read.csv( ) 和 read.table( ) 从分隔符分隔的文件（例如 csv 格式）中读取数据。然而，当数据文件很大时，这些存储方式未必是最好的。
+
+为什么文本格式不再适用呢？主要有如下3个理由：
+ 
+1. read.csv( ) 这类函数主要用于将整个文件读到内存中，成为 R 中的一个数据框。如果这个数据太大，以至于不适合计算机内存时，这个方法就失效了。
+
+2. 虽然数据集很大，但是通常我们并不需要将整个数据集载入内存来完成任务。相反，我们往往只需根据某些条件，提取原数据集的一个子集。内置的数据读取函数并不能对 csv 文件进行查询。
+
+3. 数据集在不断更新中，即我们需要定期地往数据集中插入记录。如果我们采用 csv 格式，新添数据将会非常不便，尤其是想在文件的中间部分插入新记录，又要保持其他记录的原有顺序时，将会很痛苦。
+
+针对以上情形，最好的方案是使用数据库。它能有效应对超出计算机内存容量的数据存储问题。可以根据用户提供的条件，对数据库中的数据进行查询，这也使在数据库中更新现有记录和插入新数据的操作变得简便。
+
+关系型数据库就是一个由表和表之间的关系组成的集合。数据库中的表和 R 中的数据框具有相同的形式。表之间可以相互关联，使得我们能轻松地合并多张表的信息。
+
+在这一节中，我们会从最简单的数据库开始，SQLite(http://sqlite.org/) 是一个轻量级的数据库引擎。
+
+在 R 中操作 SQLite 数据库，我们会用到 RSQLite 程序包。运行下面的代码可以从 CRAN 上下载并安装此包：
+
+```{r,eval=F}
+install.packages("RSQLite")
+```
+
+##11.1.1创建一个 SQLite 数据库
+
+首先，我们来学习如何创建一个 SQLite 数据库。如果想要在 data/example.sqlite 路径中创建一个示例数据库，我们必须确保该路径存在。如果该路径不存在，必须先创建路径：
+
+```{r}
+if (!dir.exists("data")) dir.create("data")
+```
+
+现在，路径 data/ 是可访问的。接下来我们载入 RSQLite 程序包，并通过提供一个数据库驱动（SQLite( )）和数据库文件（data/example.sqlite）来建立连接。尽管目标文件尚不存在，驱动会创建一个空文件，即一个空的 SQLite 数据库：
+
+```{r,warning=FALSE}
+library(RSQLite)
+##装载相关程序包：DBI
+con <- dbConnect(SQLite( ), "data/example.sqlite")
+```
+
+数据库连接 con 是用户和系统中间的一层。我们可以创建一个连接到关系型数据库，并通过它实现查询、抽取及更新数据。后续的操作中一直使用该连接，直到连接被关闭。在一个典型的关系型数据库中，我们可以指定表的名称、指定列的名称和数据类型来创建新表，并且可以在表中增加行记录，也可以更新现有记录。关系型数据中的一张表看起来非常像 R 里的数据框。
+
+现在，我们将创建一个简单的数据框，并将它作为一张表插入数据库。
+
+```{r}
+example1 <- data.frame(
+  id=1:5,
+  type=c("A", "A", "B", "B", "C"),
+  score=c(8, 9, 8, 10, 9),
+  stringsAsFactors = FALSE)
+example1
+```
+
+数据框已经备好，然后调用 dbWriteTable( ) 将它写入数据库，作为库中的表：
+
+```{r}
+dbWriteTable(con, "example1", example1)
+```
+
+在上面的代码中，我们也可以使用其他表名来存储同样的数据。最后，我们用 dbDisconnect( ) 断开数据库连接，这样 con 便不可用了。
+
+```{r}
+dbDisconnect(con)
+```
+
+###1.向一个数据库写入多张表格
+
+一个 SQLite 数据库是一个表的集合。因此，我们可以在数据库中存储多张表。
+
+这次，我们将 ggplot2 中的 diamonds 数据集和 flights 中的 nycflights13 数据集作为两张表格写入一个数据库中。如果你还没有安装这两个包，运行下列代码：
+
+```{r,eval=F}
+install.packages(c("ggplot2", "nycflights13"))
+```
+
+安装好两个程序包之后，我们就可以调用 data( ) 来载入所需数据框：
+
+```{r}
+data("diamonds", package ="ggplot2")
+data("flights", package ="nycflights13")
+```
+
+我们重复之前的操作，但 dbWriteTable( ) 却报错了：
+
+```{r, error=TRUE}
+con <- dbConnect(SQLite( ), "data/datasets.sqlite")
+dbWriteTable(con, "diamonds", diamonds, row.names=FALSE)
+dbWriteTable(con, "flights", flights, row.names=FALSE)
+dbDisconnect(con)
+```
+
+检查一下这两个变量的类，可能会有所帮助：
+
+```{r}
+class(diamonds)
+class(flights)
+```
+
+注意， diamonds 和 flights 不仅仅是一般的 data.frame 类型，而是更复杂的数据结构。要将它们写入数据库，我们需要用 as.data.frame( ) 将其转化成普通的数据框对象。
+
+```{r}
+con <- dbConnect(SQLite( ), "data/datasets.sqlite")
+dbWriteTable(con, "diamonds", as.data.frame(diamonds), row.names=FALSE)
+dbWriteTable(con, "flights", as.data.frame(flights), row.names=FALSE)
+dbDisconnect(con)
+```
+
+现在，数据框中就有这两张表了。
+
+###2.向表中追加数据
+
+本节开头我们提到，向数据库的表中追加记录是非常容易的。这里有一个简单的例子，我们生成几个数据块，然后将它们依次追加到数据库的表中：
+
+```{r}
+con <- dbConnect(SQLite( ), "data/example2.sqlite")
+chunk_size <- 10
+id <- 0
+for(i in 1:6) {
+  chunk <- data.frame(id = ((i-1L) * chunk_size):(i * chunk_size-1L),
+                      type = LETTERS[[i]],
+                      score =rbinom(chunk_size, 10, (10-i)/10),
+                      stringsAsFactors = FALSE)
+  dbWriteTable(con, "products", chunk,
+               append = i > 1, row.names=FALSE)
+}
+dbDisconnect(con)
+```
+
+注意，每次代码块都产生了一个数据框，其中包含一些确定数据和一些随机数，我们将这些数据记录追加一个名为 products 的表中。这个例子与之前那些的不同之处在于，当我们调用 dbWriteTable( ) 时，在第1次循环中我们令参数 append = FALSE，以便在数据库中创建表格，而后面的每次循环中我们令 append = TRUE 来拓展已有的表格。
+
+##11.1.2访问表和表中字段
+
+一旦有了 SQLite 数据库，我们不仅可以访问存储于表中的数据，也可以访问一些元数据，比如，所有表的名字或某个表中的列。
+
+我们连接至之前创建的 SQLite 数据库，以便演示：
+
+```{r}
+con <- dbConnect(SQLite( ), "data/datasets.sqlite")
+```
+
+我们可以调用 dbExistsTable( ) 来检测数据库中是否存在某张表：
+
+```{r}
+dbExistsTable(con, "diamonds")
+dbExistsTable(con, "mtcars")
+```
+
+由于我们之前只在 datasets.sqlite 写入了 diamonds 和 flights，所以 dbExistTable( ) 返回了正确的值。与检测表的存在相对应，我们用 dbListTables( ) 列示出数据库中所有存在的表：
+
+```{r}
+dbListTables(con)
+```
+
+对某个特定的表，我们也可以调用 dbListFields( ) 列出表中所有列（或字段）的名称：
+
+```{r}
+dbListFields(con, "diamonds")
+```
+
+与 dbWriteTable( ) 相反，dbReadTable( ) 将整张表读入一个数据框：
+
+```{r}
+db_diamonds <- dbReadTable(con, "diamonds")
+dbDisconnect(con)
+```
+
+我们可以将从数据库中读取的数据框 (db_diamonds) 和原有的版本 (diamonds) 做一个对比：
+
+```{r}
+head(db_diamonds, 3)
+head(diamonds, 3)
+```
+
+两个数据框的数据看起来完全一样。然而，如果调用 identical( ) 比较它们，就会发现其实并不相同：
+
+```{r}
+identical(diamonds, db_diamonds)
+```
+
+为了揭示不同之处，我们调用 str( ) 来查看两个数据框的结构。
+
+这是数据库中表的结构：
+
+```{r}
+str(db_diamonds)
+```
+
+这是原始版本的结构：
+
+```{r}
+str(diamonds)
+```
+
+现在，差异就显而易见了。在原有版本中，cut、color 和 clarity 是有序因子变量，其本质是包含元数据（次序水平）的整数。与之相比，在数据库版本中，这些列被存储为文本格式。产生这个变动的原因在于 SQLite 中对有序因子没有内置支持。因此，除了通用数据类型（数值型、文本型、逻辑型等等），在向数据库中插入数据框之前，R 特有的类型会被转化为 SQLite 支持的类型。
+
+##11.1.3学习用 SQL 对关系型数据库进行查询
+
+前面几节中，你已经掌握了如何往 SQLite 数据库中写入数据。在这一节中，你将学习如何根据需求，对数据库进行查询，进而可以从中获取数据。我们会在接下来的例子中使用 data/datasets.sqlite （之前创建的）。 
+
+首先，我们需要与数据库建立连接：
+
+```{r}
+con <- dbConnect(SQLite( ), "data/datasets.sqlite")
+dbListTables(con)
+```
+
+数据库中有两张表。我们用 select 语句来选取 diamonds 中所有的数据。这里，我们想要选择所有的列（字段）。所以，我们调用 dbGetQuery( ) ，将数据库连接 con 和查询语句作为参数输入：
+
+```{r}
+db_diamonds <- dbGetQuery(con,
+                          "select * from diamonds")
+head(db_diamonds, 3)
+```
+
+注意，* 代表所有字段（列）。如果我们只需要字段的一个子集，我们可以依次列出字段名：
+
+```{r}
+db_diamonds <- dbGetQuery(con,
+                          "select carat, cut, color, clarity, 
+                              depth, price
+                            from diamonds")
+head(db_diamonds, 3)
+```
+
+如果想选取数据中的所有不重复的值，我们可以用 select distinct。例如，下面的代码会返回 diamonds 表中 cut 字段的所有不重复取值：
+
+```{r}
+dbGetQuery(con, "select distinct cut from diamonds")
+```
+
+注意，dbGetQuery( ) 总是返回一个数据框，即使只有一列。为使单列数据框还原成原子向量，只需从数据框中取出第一列：
+
+```{r}
+dbGetQuery(con, "select distinct clarity from diamonds")[[1]]
+```
+
+当我们用 select 选择列进行查询时，原表中的列名可能并不合意。此时，可以用 A as B 的形式，得到名为 B 的列，但其中数据与原表 A 列一致：
+
+```{r}
+db_diamonds <- dbGetQuery(con,
+                          "select carat, price, clarity as clarity_level 
+                          from diamonds")
+head(db_diamonds, 3)
+```
+
+有时候，我们想要的值不是直接存储在数据库中，而是需要经过一些计算才能得到。这时，也可以使用 A as B 语句形式，这里的 A 是现有列之间的算术运算式：
+
+```{r}
+db_diamonds <- dbGetQuery(con,
+                          "select carat, price, x * y * z as size
+                          from diamonds")
+head(db_diamonds, 3)
+```
+
+假如要用现有列生成一个新列，再用该新列生成另一个列，就像下面这个例子，我们该怎么办呢？
+
+```{r,error=T}
+db_diamonds <- dbGetQuery(con,
+                          "select carat, price, x * y * z as size,
+                          price / size as value_density
+                          from diamonds")
+```
+```
+## Error in sqliteSendQuery(con, statement, bind.data): error in statement:
+no such column: size
+```
+上面的做法行不通。语句 A as B 中，A 必须由已存在的列构成。然而，如果确实需要
+这样做，可以用嵌套查询的办法，即通过一个内嵌的 select 语句产生一个临时表，再从临时表中选出所需列：
+
+```{r}
+db_diamonds <- dbGetQuery(con,
+                          "select *, price / size as value_density from
+                           (select carat, price, x * y * z as size 
+                              from diamonds)")
+head(db_diamonds, 3)
+```
+
+在这种情况下，当计算 price/size 时，size 已经在临时表中定义了。
+
+另一个数据库查询的重要部分就是条件查询。我们使用 where 来指明查询结果应满足的条件。例如，选择 cut 值为 good 的钻石数据：
+
+```{r}
+good_diamonds <- dbGetQuery(con,
+                            "select carat, cut, price from diamonds 
+                            where cut = 'Good'")
+head(good_diamonds, 3)
+```
+
+注意，cut 取值为 good 的记录只有很少的一部分：
+
+```{r}
+nrow(good_diamonds) /nrow(diamonds)
+```
+
+如果查询需要同时满足多个条件，我们可以用 and 来连结这些条件。比如，我们选出所有 cut 为 Good 且 color 值为 E 的记录：
+
+```{r}
+good_e_diamonds <- dbGetQuery(con,
+                              "select carat, cut, color, price 
+                                  from diamonds
+                                where cut = 'Good' and color = 'E'")
+head(good_e_diamonds, 3)
+nrow(good_e_diamonds) /nrow(diamonds)
+```
+
+同样的逻辑也适用于 or 和 not。
+
+除了这些简单的逻辑运算之外，我们也可以通过检查字段的值是否包含在给定集合中，使用 in 来筛选记录。例如，筛选出 color 为 E 或 F 的记录：
+
+```{r}
+color_ef_diamonds <- dbGetQuery(con,
+                                "select carat, cut, color, price 
+                                  from diamonds
+                                where color in ('E', 'F')")
+nrow(color_ef_diamonds)
+```
+
+我们用下表验证该结果：
+
+```{r}
+table(diamonds$color)
+```
+
+使用 in 的时候，我们要先指定一个集合。类似地，between and 允许我们指定一个区间：
+
+```{r}
+some_price_diamonds <- dbGetQuery(con,
+                                  "select carat, cut, color, price 
+                                    from diamonds
+                                  where price between 5000 and 5500")
+nrow(some_price_diamonds) /nrow(diamonds)
+```
+
+实际上这个区间不一定是数值型的。只要字段的数据类型是可比的，我们就可以指定一个区间。比如字符串类型的列，我们可用 between 'string1' to 'string2' 语句，按照字典排列顺序来筛选记录。
+
+针对字符串字段，还有一个有用的运算符：like，它可以用来筛选具备某种简单模式的字段。例如，我们可以选出表中 cut 变量的取值是以 Good 结尾的记录。它可以是 Good 或 Very Good。我们用 like '%Good'，这里的 % 符号可以匹配任何字符串。
+
+```{r}
+good_cut_diamonds <- dbGetQuery(con,
+                                "select carat, cut, color, price 
+                                  from diamonds           
+                                where cut like '%Good' ")
+nrow(good_cut_diamonds) /nrow(diamonds)
+```
+
+数据库查询还有一个重要功能，即按照指定字段重新排列数据。使用 order by 实现这个功能。比如，我们检索所有记录的 carat 和 price 字段，并按照 price 字段升序排列：
+
+```{r}
+cheapest_diamonds <- dbGetQuery(con,
+                                "select carat, price from diamonds
+                                order by price")
+```
+
+如此，我们得到一个钻石数据的数据框，按照由便宜到昂贵的顺序排列：
+
+```{r}
+head(cheapest_diamonds)
+```
+
+在指定排序字段时加一个 desc，就可以进行降序排列，这里我们得到一个顺序完全相反的数据框：
+
+```{r}
+most_expensive_diamonds <- dbGetQuery(con,
+                                      "select carat, price from diamonds
+                                      order by price desc")
+head(most_expensive_diamonds)
+```
+
+也可以根据多个字段（或列）对记录进行排序。例如，首先按照 price 进行升序排列，如果两条记录的 price 取值相等，再按照 carat 进行降序排列：
+
+```{r}
+cheapest_diamonds <- dbGetQuery(con,
+                                "select carat, price from diamonds
+                                order by price, carat desc")
+head(cheapest_diamonds)
+```
+
+就像 select，用于排序的列可以是根据已有列计算生成的：
+
+```{r}
+dense_diamonds <- dbGetQuery(con,
+                             "select carat, price, x * y * z as size 
+                                from diamonds
+                             order by carat /size desc")
+head(dense_diamonds)
+```
+
+同时使用 where 和 order by 便可得到一个排序的子集结果：
+
+```{r}
+head(dbGetQuery(con,
+                "select carat, price from diamonds
+                where cut = 'Ideal' and clarity = 'IF' and color = 'J'
+                order by price"))
+```
+
+如果只关心前几行结果，我们可以用 limit 来限制取出的记录条数：
+
+```{r}
+dbGetQuery(con,
+           "select carat, price from diamonds
+           order by carat desc limit 3")
+```
+
+除了字段选择（按列选取）、条件筛选、排序，我们还可以在数据库中对记录进行分组聚合（aggregate）。例如，计算每种颜色的记录条数：
+
+```{r}
+dbGetQuery(con,
+           "select color, count(*) as number from diamonds
+           group by color")
+```
+
+对原始数据调用 table( ) ，检验查询结果：
+
+```{r}
+table(diamonds$color)
+```
+
+除了汇总计数，其他聚合函数还有 avg( )、max( )、min( ) 和 sum( )。例如，计算不同透明度水平的平均价格：
+
+```{r}
+dbGetQuery(con,
+           "select clarity, avg(price) as avg_price
+           from diamonds
+           group by clarity
+           order by avg_price desc")
+```
+
+也可以检查一下，在最低的5个价格水平下，能买到的最大克拉数是多少：
+
+```{r}
+dbGetQuery(con,
+           "select price, max(carat) as max_carat
+           from diamonds
+           group by price
+           order by price limit 5")
+```
+
+还可以在组内同时进行多个运算。以下代码计算了每个透明度水平下的价格区间和价格平均值：
+
+```{r}
+dbGetQuery(con,
+           "select clarity,
+           min(price) as min_price,
+           max(price) as max_price,
+           avg(price) as avg_price
+           from diamonds
+           group by clarity
+           order by avg_price desc")
+```
+
+接下来的例子，用重量进行加权，计算了不同透明度水平下每克拉钻石的均价：
+
+```{r}
+dbGetQuery(con,
+           "select clarity,
+           sum(price * carat) / sum(carat) as wprice
+           from diamonds
+           group by clarity
+           order by wprice desc")
+```
+
+就像可以根据多个字段进行排序，我们也可以根据多个字段进行分组。以下代码计算了不同透明度水平和颜色种类下钻石的平均价格，并展示最昂贵的五种组合：
+
+```{r}
+dbGetQuery(con,
+           "select clarity, color,
+           avg(price) as avg_price
+           from diamonds
+           group by clarity, color
+           order by avg_price desc
+           limit 5")
+```
+
+关系型数据中，最能体现“关系”概念的运算是表的连接（join），即，将若干表通过某些字段连接起来。比如，创建一个新的数据框 diamond_selector，包含字段 cut、color 和 clarity，共有三条记录，之后我们将根据这三条记录筛选数据：
+
+```{r}
+diamond_selector <- data.frame(
+  cut = c("Ideal", "Good", "Fair"),
+  color = c("E", "I", "D"),
+  clarity = c("VS1", "T1", "IF"),
+  stringsAsFactors = FALSE
+  )
+diamond_selector
+```
+
+创建好数据框后，我们将它写入数据库，然后连接 diamonds 表和 diamond_selector 表再筛选出合意的记录：
+
+```{r}
+dbWriteTable(con, "diamond_selector", diamond_selector,
+             row.names=FALSE, overwrite=TRUE)
+```
+
+通过连接子句（join-clause）声明相匹配的列:
+
+```{r}
+subset_diamonds <- dbGetQuery(con,
+                              "select cut, color, clarity, carat, price
+                              from diamonds
+                              join diamond_selector using 
+                                (cut, color, clarity)")
+head(subset_diamonds)
+```
+
+总的来说，符合三个筛选条件其中之一的，只有很少一部分记录：
+
+```{r}
+nrow(subset_diamonds) /nrow(diamonds)
+```
+
+最后，不要忘记断开数据库连接，确保所有资源被正确释放：
+
+```{r}
+dbDisconnect(con)
+```
+
+在前面的例子中，我们只展示了 SQL 用于查询关系型数据库（以 SQLite 为例）的基本用法。实际上，SQL 远比我们演示的要丰富和强大。更多细节，请访问 http://www.w3schools.com/sql。
+
+##11.1.3分块提取查询结果
+
+在本节开始部分，我们提到使用关系型数据库的优势之一，是可以存储大量数据。通常，我们只提取出数据库的一个子集来进行研究。然而，有时候，我们需要检查的数据量还是超过了计算机内存容量。显然，不能把所有数据载入内存，所以必须逐块处理。
+
+绝大部分关系型数据支持逐块提取查询数据。在接下来的例子中，我们会用 dbSendQuery( ) 进行查询，而不是用 dbGetQuery( )。然后，我们重复地从查询结果中提取出一块数据（几行记录），直到遍历查询结果。通过这种方式，逐块地处理数据，而不需用到很大的内存空间。
+
+```{r}
+con <- dbConnect(SQLite( ), "data/datasets.sqlite")
+res <- dbSendQuery(con,
+                   "select carat, cut, color, price from diamonds
+                   where cut = 'Ideal' and color = 'E' ")
+while(!dbHasCompleted(res)){
+  chunk <- dbFetch(res, 800)
+  cat(nrow(chunk), "records fetched\n")
+}
+dbClearResult(res)
+dbDisconnect(con)
+```
+
+实践中，数据库中可能有数十亿条记录。查询结果有可能达到千万条。如果用 dbGetQuery( ) 一次性取出所有查询结果，内存可能吃不消。但是，如果容许分块处理数据来完成任务，那么上述方法不失为一个好的选择。
+
+###11.1.4出于一致性考虑的事务操作
+
+流行的关系数据库具有很强的确保一致性的能力。当我们插入或更新数据时，我们是通过事务实现的。其中事务是对数据库操作的逻辑单位，对事务的操作有两种：提交事务（对数据库所做的修改永久写入数据库）和回滚事务（对数据库所做的修改全部撤销，数据库还原到操作前的状态）。如果一个事务操作失败了，我们可以撤销并回滚，以保证数据的一致性。
+
+下面的例子简单模拟了一次数据累积过程（追加数据的过程），在这种过程中时常出现错误。假设我们需要累积某些产品的数据，并将它存储到 data/products.sqlite 中。每一次生成一块数据（几行数据），我们需要将它追加到数据库的某张表上。然而，在每次迭代中，该进程都有20%的概率出错。
+
+```{r,error=T}
+set.seed(123)
+con <- dbConnect(SQLite( ), "data/products.sqlite")
+chunk_size <- 10
+for( i in 1:6 ){
+  cat("Processing chunk", i, "\n")
+  if(runif(1) <= 0.2) stop("Data error")
+  chunk <- data.frame(id = ((i - 1L) * chunk_size) : (i * chunk_size - 1L),
+                      type = LETTERS[[i]],
+                      score = rbinom(chunk_size, 10, (10 - i) /10),
+                      stringsAsFactors = FALSE)
+  dbWriteTable(con, "products", chunk, append = i > 1, row.names = FALSE)
+}
+```
+
+这个累积过程在第5块数据处理时出错。我们计算一下表中的记录数：
+
+```{r}
+dbGetQuery(con, "select COUNT(*) from products")
+dbDisconnect(con)
+```
+
+我们发现表中存储了一些记录。某些情形下，我们希望只有两种结果：要么正确存储所有数据，要么不存入任何数据。这两种结果都保证了数据库的一致性。而若只有一部分数据被存储时，就会产生新的问题。为了确保对数据库的一系列变更能够作为一个整体，即要么全部成功，要么全部失败，我们在写入任何数据前都调用 dbBegin( )，待所有变更完成后，调用 dbCommit( )，如果这个过程中出现错误，就调用 dbRollback( )。
+
+接下来的代码是上一个例子的增强版。我们通过事务操作确保：要么所有分块数据都被正确写入数据库，要么不做任何变更。更确切地说，我们把数据写入过程放进 tryCatch 里。写入开始前，我们调用 dbBegin( ) 开始事务操作。接着，在 tryCatch 中，向数据库逐块地写入数据。若一切顺利进行，再用 dbCommit( ) 提交事务。如果过程中出现任何错误，error( ) 函数会捕获错误并产生警告，再调用 dbRollback( ) 回滚事务：
+
+```{r}
+set.seed(123)
+file.remove("data/products.sqlite")
+con <- dbConnect(SQLite( ), "data/products.sqlite")
+chunk_size <- 10
+dbBegin(con)
+fes <- tryCatch({
+  for( i in 1:6 ){
+    cat("Processing chunk", i, "\n")
+    if(runif(1) <= 0.2) stop("Data error")
+    chunk <- data.frame(id = ((i - 1L) * chunk_size) : (i * chunk_size - 1L),
+                      type = LETTERS[[i]],
+                      score = rbinom(chunk_size, 10, (10 - i) /10),
+                      stringsAsFactors = FALSE)
+  dbWriteTable(con, "products", chunk, append = i > 1, row.names = FALSE)
+  }
+  dbCommit(con)
+},error = function(e){
+  warning("An error occurs: ", e, "\nRolling back", immediate. = TRUE)
+  dbRollback(con)
+})
+```
+
+我们看到，相同的错误又一次发生。但是，这次，错误被捕捉到了，事务操作取消，数据库回滚。我们再一次计算表 products 中的记录条数进行验证：
+
+```
+dbGetQuery(con, "select COUNT(*) from products")
+```
+```
+## Error in sqliteSendQuery(con, statement, bind.data): error in statement:no such table: products
+```
+```{r}
+dbDisconnect(con)
+```
+
+也许你会很惊讶，计数查询居然返回错误。为什么不返回0呢？如果我们仔细检查这个例子，就会明白，第一次调用 dbWriteTable( ) 时，它创建了一个新表，并在第一块插入了数据。换言之，创建表的操作也包括在事务中。所以在回滚时，表的创建也被撤销了。由于名为 products 的表根本不存在，计数查询返回错误也就不奇怪了。如果创建表在前，开始事务在后，那么撤销该事务后进行计数查询，其结果就与事务开始前表中的记录条数一致了。
+
+要求数据之间具有强一致性的另一个例子是账户转移。当我们将一笔资金从一个帐户转移到另一个帐户时，必须确保系统从一个账户提取资金，同时向另一账户存入等额资金。这两个变动要么同时发生，要么都失败，以保证一致性。利用关系型数据的事务操作可以轻松实现。
+
+假设我们定义一个函数用于创建一个虚拟银行的 SQLite 数据库。调用dbSendQuery( ) 发送命令，创建 accounts 表（账户表）和 transactions 表（交易表）：
+
+```{r}
+create_bank <- function(dbfile) {
+  if(file.exists(dbfile)) file.remove(dbfile)
+  con <- dbConnect(SQLite( ), dbfile)
+  dbSendQuery(con,
+              "create table accounts
+              (name text primarykey key, balance real)")
+  dbSendQuery(con,
+              "create table transactions
+              (time text, account_from text, account_to text, 
+              value real)")
+  con
+}
+```
+
+这个 accounts 表具有2列：name 和 balance。transactions 表有4列：time、account_from、account_to 和 value。第1张表存储了所有账户信息，第2张表存储所有历史交易信息。
+
+此外，我们定义了另一个函数，用于创建带有账户名和初始余额的账户。这个函数用 insert into 向 accounts 表写入新记录： 
+
+```{r}
+create_account <- function(con, name, balance){
+  dbSendQuery(con,
+              sprintf("insert into accounts (name, balance) 
+                      values ('%s', %.2f)",
+                      name, balance))
+  TRUE
+}
+```
+
+我们用 sprintf( ) 来产生之前的 SQL 语句。它适用于本地和个人用途，但对于网络应用来说通常不够安全，因为黑客很容易通过局部表达式运行一些破坏性语句，进而操控整个数据库。
+
+接着，我们定义一个转账函数，用于检查数据库中是否同时存在取款账户和收款账户。它确保取款账户的余额足够完成转账请求。一旦转账有效，它会更新两个账户的余额并向数据库中添加一条交易记录：
+
+```{r}
+transfer <- function(con, from, to, value){
+  get_account <- function(name){
+    account <- dbGetQuery(con,
+                          sprintf("select * from accounts
+                                  where name = '%s' ", name))
+    if (nrow(account) == 0)
+      stop(sprintf("Account '%s' does nor exist", name))
+    account
+  }
+  account_from <- get_account(from)
+  account_to <- get_account(to)
+  if (account_from$balance < value) {
+    stop(sprintf("Insufficient money to transter from '%s' ", from))}
+  else {
+    dbSendQuery(con,
+                sprintf("update accounts set balance = %.2f
+                        where name = '%s' ",
+                        account_from$balance - value, from))
+    dbSendQuery(con,
+                sprintf("update accounts set balance = %.2f
+                        where name = '%s' ",
+                        account_to$balance + value, to))
+    dbSendQuery(con,
+                sprintf("insert into transactions (time, account_from, account_to, value)
+                        values ('%s', '%s', '%s', %.2f)", 
+                        format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+                        from, to, value))
+  }
+  TRUE
+}
+```
+
+尽管已经考虑到取款账户余额不足的可能性，并对此进行事前检查，但是仍有其他原因导致转账操作的风险。因此，我们实现一种 transfer( ) 的安全版本，利用事务操作，确保只要转账中出现任何错误，就可以撤销 transfer( ) 函数所做的一切更改。
+
+```{r}
+safe_transfer <- function(con, ...) {
+  dbBegin(con)
+  tryCatch({
+    transfer(con, ...)
+    dbCommit(con)
+  }, error = function(e) {
+    message("An error occurs in the transaction. Rollback...")
+    dbRollback(con)
+    stop(e)
+  })
+}
+```
+
+实际上，safe_transfer( ) 是 transfer( ) 的一个封装。safe_transfer( ) 仅仅是将 transfer( ) 放进了 tryCatch( ) 的沙箱中。如果有错误发生，我们就调用 doRollback( ) 以确保数据库的一致性。
+
+在对这些函数进行测试前，我们还需要一个函数，用于查看给定账户的余额和成功完成的交易信息。
+
+```{r}
+get_balance <- function(con, name) {
+  res <- dbGetQuery(con,
+                    sprintf("select balance from accounts
+                            where name = '%s'", name))
+  res$balance
+}
+get_transactions <- function(con, from, to) {
+    dbGetQuery(con,  sprintf( "select * from transactions
+                              where account_from = '%s' and
+                              account_to = '%s'",
+                              from,  to))
+}
+```
+
+现在，我们可以进行测试了。首先，调用 create_bank( ) 创建一个虚拟银行，它返回一个指向数据库文件的 SQLite 连接。然后，我们创建两个账户，并赋予初始余额。
+
+```{r,warning=F}
+con <- create_bank("data/bank.sqlite")
+create_account(con, "David", 5000)
+create_account(con, "Jenny", 6500)
+get_balance(con, "David")
+get_balance(con, "Jenny")
+```
+
+接着，再用 safe_transfer( ) 从 David 的账户向 Jenny 的账户转账。
+
+```{r,warning=F}
+safe_transfer(con, "David", "Jenny", 1500)
+get_balance(con, "David")
+get_balance(con, "Jenny")
+```
+
+转账成功了，在保证一致性的前提下两个账户的余额都被修改了。现在，我们要再做一次转账。这一次，David 的账户余额不足，所以转账以失败告终：
+
+```{r,error=T}
+safe_transfer(con, "David", "Jenny", 6500)
+get_balance(con, "David")
+get_balance(con, "Jenny")
+```
+
+函数返回错误信息，并对数据库进行回滚。两个账户的余额都没有变动。现在，我们查询所有成功的交易记录：
+
+```{r}
+get_transactions(con, "David", "Jenny")
+```
+
+我们找到了第1次交易，但第2次交易失败了，所以没有出现在数据库中。最后，一定要记得切断数据库连接：
+
+```{r}
+dbDisconnect(con)
+```
+
+###11.1.5将多个文件的数据存入一个数据库
+
+当我们处理大数据文件时，常常在读写数据方面遇到许多问题。实际中可能出现两种极端情况。一种是：一个非常大的文本格式数据源，几乎不能载入内存。另一种是：数据分散在许多文件中，需要费些力气将它们整合到一个数据框中。
+
+对于第1种情况，我们可以逐块地读取数据，并将每块数据分别追加到数据库的某张表中。以下函数便是为此设计的，给定输入文件、输出数据库、表名和数据块的容量，该函数向数据库的表中追加记录。考虑到输入数据可能过大，以至于无法载入内存，所以这个函数每次只会读取一块数据，将其写入数据库，因此，只需要很小的工作内存：
+
+```{r}
+chunk_rw <- function(input, output, table, chunk_size = 10000) {
+  first_row <- read.csv(input, nrows = 1, header = TRUE)
+  header <- colnames(first_row)
+  n <- 0
+  con <- dbConnect(SQLite(), output)
+  on.exit(dbDisconnect(con))
+  while (TRUE) {
+    df <- read.csv(input,
+      skip = 1 + n * chunk_size,
+      nrows = chunk_size,
+      header = FALSE,
+      col.names = header,
+      stringsAsFactors = FALSE)
+    if (nrow(df) == 0) break
+    dbWriteTable(con, table, df, row.names = FALSE, append = n > 0)
+    n <- n + 1
+    cat(sprintf("%d records written\n", nrow(df)))
+  }
+}
+```
+
+因为是逐块进行操作，所以技巧性在于正确地计算输入文件中每个数据块的偏移量。
+
+为了测试这个函数，我们先将 diamonds 写入一个 csv 文件，再用 chunk_rw( ) 逐块地将 csv 文件写入 SQLite 数据库。用这种办法，写入过程只需要非常小的工作内存，远远小于将整个数据载入所需的内存。
+
+```{r}
+write.csv(diamonds, "data/diamonds.csv", quote = FALSE, row.names = FALSE)
+chunk_rw("data/diamonds.csv", "data/diamonds.sqlite", "diamonds")
+```
+
+另一种极端的情况是，我们需要从很多个小文件中读取数据。在这种情况下，我们可以把分布在这些文件中的所有数据写入一个数据库，以便轻松地实现查询。下面这个函数将一个文件夹中的所有 csv 文件的数据导入一个数据库中：
+
+```{r}
+batch_rw <- function(dir, output, table, overwrite = TRUE) {
+  files <- list.files(dir, "\\.csv$", full.names = TRUE)
+  con <- dbConnect(SQLite(), output)
+  on.exit(dbDisconnect(con))
+  exist <- dbExistsTable(con, table)
+  if (exist) {
+      if (overwrite) dbRemoveTable(con, table)
+      else stop(sprintf("Table '%s' already exists", table))
+  }
+exist <- FALSE
+for (file in files) {
+  cat(file, "... ")
+  df <- read.csv(file, header = TRUE,
+                stringsAsFactors = FALSE)
+  dbWriteTable(con, table, df, row.names = FALSE,
+              append = exist)
+  exist <- TRUE
+  cat("done\n")}
+}
+```
+
+为了演示，我们在 data/groups 中放入多个小 csv 格式文件，使用 batch_rw( ) 将所有数据导入数据库。
+
+```{r,eval=F}
+batch_rw("data/groups", "data/groups.sqlite", "groups")
+## data/groups/group1.csv ... done
+## data/groups/group2.csv ... done
+## data/groups/group3.csv ... done
+```
+
+现在，所有文件中的数据都被放到数据库了。我们可以读取整个表来看看最终效果:
+
+```{r,eval=F}
+con <- dbConnect(SQLite(), "data/groups.sqlite")
+dbReadTable(con, "groups")
+```
+```
+## group id grade
+## 1 1 I-1 A
+## 2 1 I-2 B
+## 3 1 I-3 A
+## 4 2 II-1 C
+## 5 2 II-2 C
+## 6 3 III-1 B
+## 7 3 III-2 B
+## 8 3 III-3 A
+## 9 3 III-4 C
+```
+```{r,eval=F}
+dbDisconnect(con)
+```
+```
+## [1] TRUE
+```
+
+本节中，你学习了 SQLite 数据库的基本知识和用法。实际上许多流行的关系型数据库，它们的功能特征和查询语句基本类似。掌握这些通用知识，足够你使用各种工具操作不同的关系型数据库，例如，通过 RMySQL 操作 MySQL，通过 RPostges 操作z PostreSQL，通过 RSQLServer 操作 Microsoft SQL，或者通过 RODBC 操作 ODBC 兼容数据库（Microsoft Acess 和 Excel）。它们共享相同的操作用法，因此，如果你熟悉其中一种，那么，操作其他几种应该也不成问题。
+
+#11.2操作非关系型数据库
+
+在本章的前面几节中，你已经掌握了关系型数据库的基础，学会使用 SQL 查询数据。关系型数据库主要是以表的形式组织，即它是相互之间具有关联的表的集合。
+
+然而，当数据量超出服务器的承载容量时，新问题就产生了，因为关系型数据库的传统模型不容易支持水平可伸缩性，即，不再用单个服务器，而是用服务器群集中存储数据。这就为数据库管理的复杂性增加了一个层级，因为数据以分布式形式存储，同时仍可以通过一个逻辑数据库被访问。
+
+近些年来，得益于新数据库模型的引入和其在大数据分析与实时应用中的出色表现，NoSQL，即非关系型数据库，开始流行起来。一些非关系型数据库旨在实现高可用性、扩展性、灵活性和高性能等。
+
+关系型数据库和非关系型数据库在存储模型方面的差别是显而易见的。举个例子，对一个购物网站来说，商品和评论信息可以存储在一个具有两张表的关系型数据库里：商品表和评论表。所有的商品信息存储在一张表中，各个商品的所有评价存储在另一张表中。以下代码展示了这些表的基本结构：
+
+```
+products:
+code,name,type,price,amount
+A0000001,Product-A,Type-I,29.5,500
+```
+
+每条评论带有一个字段，指向它描述的商品：
+
+```
+comments:
+code,user,score,text
+A0000001,david,8,"This is a good product"
+A0000001,jenny,5,"Just so so"
+```
+
+当一个商品具有许多相关的表和海量记录时，数据库必须分配给服务器群，但这会增加数据查询的难度，因为即使仅运行一个简单的查询，也是极度低效的。如果我们用 MongoDB 存储这样的数据，每个商品被存储为一个文档，该商品的所有评论，以数组的形式存储在该文档的一个字段中。如此，数据查询就容易多了，而且数据库也可以很方便地实现多服务器分布式存储。
+
+##11.2.1 MongoDB 操作
+
+MongoDB 是一种流行的非关系型数据库，它提供了一种面向文档的数据存储方式。每种商品就是集合中的一份文档。商品具有一些描述字段和一个数组类型的评论字段。所有评论都是一个子文档，因此每个逻辑项都可以以自己的逻辑形式进行存储。
+
+以下是集合中一种商品的 JSON（https://en.wikipedia.org/wiki/JSON） 文件存储方式：
+
+```{r,eval=F}
+{
+  "code":"A0000001",
+  "name":"Product-A",
+  "type":"Type-I",
+  "price":29.5,
+  "amount":500,
+  "comments":[
+    {
+    "user":"david",
+    "score":8,
+    "text":"This is a good product"
+    },
+    {
+    "user":"jenny",
+    "score":5,
+    "text":"Just so so"
+    }
+  ]
+}
+```
+
+关系型数据库可能具有许多模式。每种模式（数据库）可以由多张表组成。每张表可能含有多条记录。相似的，一个 MongoDB 实例可以搭建多个数据库。每个数据库有可以存在多个集合。每个集合内可能有多个文档。二者的主要的区别在于，关系型数据库中，一张表的所有记录具有相同的结构，但 MongoDB 数据库集合内的文档却没有模式限制，可以灵活实现嵌套结构。
+
+比如，前述的 JSON 代码，一种商品用这样一个文档来描述，文档内的 code、name、type、price 和 amount 这些数据字段都是简单的数据类型，而 comment 则是数组对象。每条评论由 comment 数组的一个对象所表示，该对象具有 user、score 和 text 的结构。该商品的所有评论共同组成一个对象存储于 comments 字段中。因此，根据商品信息和评论，每种商品都是高度自包含的。如果我们需要某种产品的信息，不必再连接两张表，只需选出几个字段即可。
+
+欲安装 MongoDB，请访问 https://docs.mongodb.com/manual/installation/ 根据说明操作即可。它支持几乎所有主流平台。
+
+###1.用 MongoDB 查询数据
+
+假设我们有一个在本地设备上运行的工作 MongoDB 实例。使用 mongolite 程序包操作 MongoDB。可运行以下代码安装该程序包：
+
+```{r,eval=F}
+install.packages("mongolite")
+```
+
+一旦安装好了程序包，我们便可以通过声明集合、数据库和 MongoDB 的地址来创建 Mongo 连接：
+
+```{r,warning=F}
+library(mongolite)
+m <- mongo("products", "test", "mongodb://localhost")
+```
+
+首先，我们创建一个到本地的 MongoDB 实例的连接。初始状态下，集合 products 不含任何文档。
+
+```{r}
+m$count( )
+```
+
+为了插入一个带评论的商品，直接将 JSON 文档以字符串形式传递给 m$insert( )：
+
+```{r,results='hide'}
+m$insert('
+{
+  "code": "A0000001",
+  "name": "Product-A",
+  "type": "Type-I",
+  "price": 29.5,
+  "amount": 500,
+  "comments": [
+    {
+    "user": "david",
+    "score": 8,
+    "text": "This is a good product"
+    },
+    {
+    "user": "jenny",
+    "score": 5,
+    "text": "Just so so"
+    }
+  ]
+}')
+```
+
+现在，这个集合中就有一个文档了：
+
+```{r}
+m$count( )
+```
+
+此外，也可以用 R 中的列表对象来表示相同的结构。以下代码使用 list( ) 插入了第2个商品：
+
+```{r,results='hide'}
+m$insert(list(
+  code = "A0000002",
+  name = "Product-B",
+  type = "Type-II",
+  price = 59.9,
+  amount = 200L,
+  comments = list(
+    list(user = "tom", score = 6L,
+        text = "Just fine"),
+    list(user = "mike", score = 9L,
+        text = "great product!")
+  )
+), auto_unbox = TRUE)
+```
+
+注意，R 没有提供标量类型，所以默认情况下，所有向量在 MongoDB 中都会被解译为 JSON 数组，除非设置 auto_unbox = TRUE，它会使单元素向量转换为 JSON 中的标量。
+如果没有设置 auto_unbox = TRUE，就要用 jsonlite::unbox( ) 来确保标量输出或用 I( ) 确保数组输出。
+
+现在，集合中有两个文档了：
+
+```{r}
+m$count( )
+```
+
+接着，我们用 m$find( ) 来取出集合中的所有文档，为了更方便进行数据处理，结果会自动简化为数据框类型。
+
+```{r}
+products <- m$find( )
+str(products)
+```
+
+为了避免自动转换，我们可以用 m$iterate( ) 在集合中进行迭代，并得到具有原始存储形式的列表对象：
+
+```{r}
+iter <- m$iterate( )
+products <- iter$batch(2)
+str(products)
+```
+
+我们可以在 m$find( ) 中声明条件查询及字段来筛选集合：
+
+首先，我们查询 code 为 A0000001 的文档并取出 name、price、amount 字段：
+
+```{r}
+m$find('{ "code": "A0000001" }',
+'{ "_id": 0, "name": 1, "price": 1, "amount": 1 }')
+```
+
+然后，查询 price 字段大于等于40的文档，这一步通过条件查询的 $gte 运算符来实现：
+
+```{r}
+m$find('{ "price": { "$gte": 40 } }',
+'{ "_id": 0, "name": 1, "price": 1, "amount": 1 }')
+```
+
+我们不仅可以查询文档字段，也可以查询数组字段中某个对象。下列代码用来取出对应评论数组中9分的商品文档：
+
+```{r}
+m$find('{ "comments.score": 9 }',
+'{ "_id": 0, "code": 1, "name": 1}')
+```
+
+类似地，下面的代码可取出6分以下低分评论的商品文档：
+
+```{r}
+m$find('{ "comments.score": { "$lt": 6 }}',
+'{ "_id": 0, "code": 1, "name": 1}')
+```
+
+注意，使用 . 符号可以轻松实现访问子文档中的字段，这使我们能够更加灵活地对嵌套结构进行控制：
+
+```{r}
+m$drop()
+```
+
+m$insert( ) 函数也可以用来处理 R 中的数据框。现在，我们创建一个新的 MongoDB 连接，并且与另一个集合连接：
+
+```{r}
+m <- mongo("students", "test", "mongodb://localhost")
+```
+
+我们创建一个 MongoDB 连接对象 m，来处理本地 MongoDB 实例中 test 数据库的 students 集合。
+
+```{r}
+m$count( )
+```
+
+最初这个集合中没有文档。我们创建一个简单的数据框，以便向其中插入一些数据：
+
+```{r}
+students <- data.frame(
+  name = c("David", "Jenny", "Sara", "John"),
+  age = c(25, 23, 26, 23),
+  major = c("Statistics", "Physics", "Computer Science", "Statistics"),
+  projects = c(2, 1, 3, 1),
+  stringsAsFactors = FALSE
+)
+students
+```
+
+然后，我们将这些行行为文档插入到集合中：
+
+```{r,results='hide'}
+m$insert(students)
+```
+```
+##
+Complete! Processed total of 4 rows.
+```
+
+现在，集合中有一些文档了：
+
+```{r}
+m$count( )
+```
+
+我们可以用 find( ) 取出所有的文档：
+
+```{r}
+m$find( )
+```
+
+正如前面的例子中所提到的，文档存储在 MongoDB 集合中的方式，与关系型数据库中字段存储在表中的方式是不同的。MongoDB 集合中的一个文档，更像是一个 JSON 文档，但实际上，它是以二进制数据形式存储的，以获得高性能和紧凑性。m$find( ) 函数首先取出类 JSON 格式中的数据，然后将它简化更便于数据处理的数据格式。
+
+为了筛选数据，我们可以在 m$find( ) 中声明条件查询。例如，我们想找出名为 Jenny 的所有文档：
+
+```{r}
+m$find('{ "name": "Jenny" }')
+```
+
+结果自动强制转换为数据框，以便于使用。然后，我们查询 projects 字段数值大于等于2的所有文档：
+
+```{r}
+m$find('{ "projects": { "$gte": 2 }}')
+```
+
+为选择字段，我们指定  find( ) 函数的 fields 参数：
+
+```{r}
+m$find('{ "projects": { "$gte": 2 }}',
+'{ "_id": 0, "name": 1, "major": 1 }')
+```
+
+我们也可以设置 sort 参数来整理数据：
+
+```{r}
+m$find('{ "projects": { "$gte": 2 }}',
+fields ='{ "_id": 0, "name": 1, "age": 1 }',
+sort ='{ "age": -1 }')
+```
+
+指定 limit 参数来限制返回文档的数量：
+
+```{r}
+m$find('{ "projects": { "$gte": 2 }}',
+fields ='{ "_id": 0, "name": 1, "age": 1 }',
+sort ='{ "age": -1 }',
+limit =1)
+```
+
+同样，我们可以得到所有文档中某一字段中的所有不同的值：
+
+```{r}
+m$distinct("major")
+```
+
+得到基于某个条件的不同取值：
+
+```{r}
+m$distinct("major", '{ "projects": { "$gte": 2 } }')
+```
+
+要更新某个文档，我们可以调用 update( )，找到所选文档，设置特定字段的取值：
+
+```{r}
+m$update('{ "name": "Jenny" }', '{ "$set": { "age": 24 } }')
+m$find()
+```
+
+###2.创建或移除索引
+
+与关系型数据库类似，MongoDB 也支持索引。一个集合可以有多个索引，并且索引字段被高速缓存在存储器中以便快速查找。适当地创建索引能够使文档检索变得非常高效。
+
+借助 mongolite 程序包能够轻松在 MongoDB 中创建索引。这个工作在我们像集合中导入数据前或后进行都是可行的。然而，如果在已经导入了数十亿的数据后，再创建索引会是一件费时的工作。同样，如果在导入文档前就创建了许多索引，就会影响导入集合的性能。
+
+这里，我们为 students 集合创建一个索引：
+
+```{r}
+m$index('{ "name": 1 }')
+```
+
+现在，如果通过索引字段查找文档，其运算性能是优异的：
+
+```{r}
+m$find('{ "name": "Sara" }')
+```
+
+如果没有文档满足条件，则会返回一个空的数据框：
+
+```{r}
+m$find('{ "name": "Jane" }')
+```
+
+最后，使用 drop( ) 删除集合。
+
+```{r}
+m$drop( )
+```
+
+显然，如果数据量本身很小，那么由索引带来的性能提升是很有限的。在下一个例子中，我们会创建一个有许多行的数据框，以便比较使用索引和不使用索引两种情况下，查找文档的性能差异。
+
+```{r}
+set.seed(123)
+m <- mongo("simulation", "test")
+  sim_data <- expand.grid(
+  type = c("A", "B", "C", "D", "E"),
+  category = c("P-1", "P-2", "P-3"),
+  group = 1:20000,
+  stringsAsFactors = FALSE)
+head(sim_data)
+```
+
+索引字段已经创建好了。接下来，我们需要生成一些随机数字：
+
+```{r}
+sim_data$score1 <- rnorm(nrow(sim_data), 10, 3)
+sim_data$test1 <- rbinom(nrow(sim_data), 100, 0.8)
+```
+
+现在的数据框如下所示：
+
+```{r}
+head(sim_data)
+```
+
+然后，我们向 simulation 集合中插入一下数据：
+
+```{r,results='hide'}
+m$insert(sim_data)
+```
+```
+Complete! Processed total of 300000 rows.
+[1] TRUE
+```
+第1项测试用于回答在未使用索引的情况下，查询一个文档需要多长时间：
+
+```{r,results='hide'}
+system.time(rec <- m$find('
+        { "type": "C", "category": "P-3", "group": 87}'))
+```
+```
+##
+Found 1 records...
+Imported 1 records. Simplifying into dataframe...
+## user system elapsed
+## 0.000 0.000 0.104
+rec
+##    type category group score1 test1
+## 1   C    P-3     87    6.556688 72
+```
+
+第2项测试是关于使用联合条件查询文档的性能表现：
+
+```{r,results='hide'}
+system.time({
+  recs <- m$find('{ "type": { "$in": ["B", "D"] },
+                  "category": { "$in": ["P-1", "P-2"] },
+                  "group": { "$gte": 25, "$lte": 75 } }')
+  })
+```
+```
+##
+Found 204 records...
+Imported 204 records. Simplifying into dataframe...
+## user system elapsed
+## 0.004 0.000 0.094
+```
+
+查询结果数据框如下所示：
+
+```{r}
+head(recs)
+```
+
+第3项测试是关于使用非索引字段进行文档查询的性能表现：
+
+```{r,results='hide'}
+system.time(recs2 <- m$find('{ "score1": { "$gte": 20 } }'))
+```
+```
+##
+Found 158 records...
+Imported 158 records. Simplifying into dataframe...
+## user system elapsed
+## 0.000 0.000 0.096
+```
+
+查询结果数据框是这样的：
+
+```{r}
+head(recs2)
+```
+
+以上3个测试都在无索引的情况下完成。为了进行对比，现在我们创建一个索引：
+
+```{r}
+m$index('{ "type": 1, "category": 1, "group": 1 }')
+```
+
+一旦索引被创建出来，第1项测试，以索引字段进行查询就变得非常快：
+
+```{r,results='hide'}
+system.time({
+        rec <- m$find('{ "type": "C", "category": "P-3", "group": 87 }')
+})
+```
+```
+##
+Found 1 records...
+Imported 1 records. Simplifying into dataframe...
+## user system elapsed
+## 0.000 0.000 0.001
+```
+
+第2项测试的结果也很快输出：
+
+```{r,results='hide'}
+system.time({
+            recs <- m$find('{ "type": { "$in": ["B", "D"] },
+            "category": { "$in": ["P-1", "P-2"] },
+            "group": { "$gte": 25, "$lte": 75 } }')
+})
+```
+```
+##
+Found 204 records...
+Imported 204 records. Simplifying into dataframe...
+## user system elapsed
+## 0.000 0.000 0.002
+```
+
+然而，非索引字段的查询性能却没有得到提升：
+
+```{r,results='hide'}
+system.time({
+recs2 <- m$find('{ "score1": { "$gte": 20 } }')
+})
+```
+```
+##
+Found 158 records...
+Imported 158 records. Simplifying into dataframe...
+## user system elapsed
+## 0.000 0.000 0.095
+```
+
+MongoDB 另一个重要特性是它的聚合管道。聚合数据时，我们提供一个聚合操作数组，以便它们由 MongoDB 实例调度分派。例如，以下代码按类型对数据进行分组。每一组中有计数字段、平均分、最小测试分和最大测试分。由于输出冗长，这里我们就不在这里打印出来了。你可以自行运行下列代码查看结果：
+
+```{r,eval=FALSE}
+m$aggregate('[
+  { "$group": {
+    "_id": "$type",
+    "count": { "$sum": 1 },
+    "avg_score": { "$avg": "$score1" },
+    "min_test": { "$min": "$test1" },
+    "max_test": { "$max": "$test1" }
+    }
+  }
+]')
+```
+
+我们也可以将多个字段作为一个组的键，这与 SQL 中的语句 group by A,B 类似：
+
+```{r,eval=FALSE}
+m$aggregate('[
+  { "$group": {
+    "_id": { "type": "$type", "category": "$category" },
+    "count": { "$sum": 1 },
+    "avg_score": { "$avg": "$score1" },
+    "min_test": { "$min": "$test1" },
+    "max_test": { "$max": "$test1" }
+    }
+  }
+]')
+```
+
+聚合管道支持以流线形式运行聚合操作：
+
+```{r,eval=FALSE}
+m$aggregate('[
+  { "$group": {
+    "_id": { "type": "$type", "category": "$category" },
+    "count": { "$sum": 1 },
+    "avg_score": { "$avg": "$score1" },
+    "min_test": { "$min": "$test1" },
+    "max_test": { "$max": "$test1" }
+    }
+  },
+  {
+  "$sort": { "_id.type": 1, "avg_score": -1 }
+  }
+]')
+```
+
+我们可以通过增加更多操作来延长管道。比如，以下例子可以创建组和聚合数据。之后，根据降序平均分对文档进行整理，提取出平均值最大的三个文档，并将字段投影到有用的东西上：
+
+```{r,eval=FALSE}
+m$aggregate('[
+  { "$group": {
+    "_id": { "type": "$type", "category": "$category" },
+    "count": { "$sum": 1 },
+    "avg_score": { "$avg": "$score1" },
+    "min_test": { "$min": "$test1" },
+    "max_test": { "$max": "$test1" }
+    }
+  },
+  {
+    "$sort": { "avg_score": -1 }
+  },
+  {
+    "$limit": 3
+  },
+  {
+    "$project": {
+    "_id.type": 1,
+    "_id.category": 1,
+    "avg_score": 1,
+    "test_range": { "$subtract": ["$max_test", "$min_test"] }
+    }
+  }
+]')
+```
+
+除了我们在例子中演示的聚合运算，还有许多更强大的运算。更多细节，请访问 https://docs.mongodb.com/manual/reference/operator/aggregation-pipeline/ 和 https://docs.mongodb.com/manual/reference/operator/aggregation-arithmetic/。
+
+MongoDB的另一个重要特性，是它包含对 MapReduce（https://en.wikipedia.org/wiki/MapReduce） 的内置支持。MapReduce 模型在分布式集群的大数据分析中运用广泛。在当前环境下，我们可以写一个极其简单的 MapReduce 代码，尝试生成给定数据的直方图：
+
+```{r,eval=FALSE}
+bins <- m$mapreduce(
+  map = 'function() {
+    emit(Math.floor(this.score1 / 2.5) * 2.5, 1);
+    }',
+  reduce = 'function(id, counts) {
+    return Array.sum(counts);
+    }'
+)
+```
+
+MapReduce 的第1步是 map。在此步骤中，所有数值都映射到一个键值对（key-value pair）上。第2步是 reduce，在这一步骤中聚合键值对。在前面的例子中，我们简单计算了每一个 bin 的记录条数：
+
+```{r,eval=FALSE}
+bins
+## _id value
+## 1 -5.0 6
+## 2 -2.5 126
+## 3 0.0 1747
+## 4 2.5 12476
+## 5 5.0 46248
+## 6 7.5 89086
+## 7 10.0 89489
+## 8 12.5 46357
+## 9 15.0 12603
+## 10 17.5 1704
+## 11 20.0 153
+## 12 22.5 5
+```
+
+我们也可以由 bins 创建一幅柱状图：
+
+```{r,eval=FALSE}
+with(bins, barplot(value /sum(value), names.arg = `_id`,
+main = "Histogram of scores",
+xlab = "score1", ylab = "Percentage"))
+```
+
+生成的柱状图如下所示：
+
+
+如果该集合不用了，就可以用 drop( ) 函数删除它：
+
+```{r}
+m$drop( )
+```
+
+因为这部分内容仅停留在介绍层面，MongoDB 的更多高级操作超出了该书范围。如果你对 MongoDB 感兴趣，请浏览官方指南 https://docs.mongodb.com/manual/tutorial/。
+
+##11.2.2使用 Redis
+
+Redis（https://redis.io/），既不像 SQLite 以表的形式存储数据，也不像 MongoDB 允许以嵌套结构存储和查询，它是一种内存数据库结构，即将数据缓存在内存中。它会将键值（key-value）缓存于内存中，以此获得极高的键值检索性能。然而，它并不支持 SQL 数据库或 MongoDB 中所使用的查询语句。
+
+Redis通常被用作高速缓冲存储器。我们可以用它存储和操作一系列基本的数据结构。安装 Redis，请访问 https://redis.io/download。 不幸的是，官方版本不支持 Windows 操作系统，但 Microsoft Open Tech 小组开发并维护着一种 Win64 接口的 Redis，请访问 https://github.com/MSOpenTech/redis。
+
+SQL 数据库存储表格、MongoDB 存储文档，而 Redis 存储键值对，如下：
+
+```{r,eval=FALSE}
+name: Something
+type: 1
+grade: A
+```
+
+该值不是简单数值，它可以具有更复杂的数据结构（例如，哈希映射、集合、有序集合），Redis 提供了一个处理这些数据结构的简单界面，并且能够同时具有高性能和低延迟的优点。
+
+###1.用 R 访问 Redis
+
+用 R 访问 Redis 实例，需要使用 rredis 程序包，它提供了一些操作 Redis 的简单函数。运行下列代码安装此程序包：
+
+```{r,eval=FALSE}
+install.packages("rredis")
+```
+
+一旦程序包准备就绪，我们就可连接至 Redis 实例:
+
+```{r,warning=F}
+library(rredis)
+redisConnect( )
+```
+
+在不设置参数的情况下，默认连接至本地 Redis 实例。我们也可以连接至远程实例。
+
+###2.设置 Redis 服务器和数据获取
+
+Redis 的最基本的用法就是调用 redisSet(key, value)。在 R 中，这个值默认序列化，因此我们可以在 Redis 中存储所有 R 对象：
+
+```{r}
+redisSet("num1", 100)
+```
+
+现在，该命令生效了，我们可以取出同个键中的值：
+
+```{r}
+redisGet("num1")
+```
+
+也可以存储一个整数向量：
+
+```{r}
+redisSet("vec1", 1:5)
+redisGet("vec1")
+```
+
+甚至可以存储一个数据框：
+
+```{r,echo=F}
+data(mtcars)
+```
+
+```{r}
+redisSet("mtcars_head", head(mtcars, 3))
+redisGet("mtcars_head")
+```
+
+实际上，如果其他计算机有权限访问你的 Redis 实例，他们在 R 中用 redisGet( ) 会得到相同的数据。
+
+然而，如果这个键根本不存在，我们只能得到 NULL：
+
+```{r}
+redisGet("something")
+```
+
+我们可以用 redisExists( ) 检验某个键是否存在，而不是得到 NULL：
+
+```{r}
+redisExists("something")
+redisExists("num1")
+```
+
+如果我们不再用到某个键，可以用 redisDelete( ) 删除它：
+
+```{r}
+redisDelete("num1")
+redisExists("num1")
+```
+
+除了普通的键值对，Redis 也支持一些更高级的数据结构。比如，我们可以用 redisHset( ) 对水果创建一个哈希映射，其中不同的水果的数量不同：
+
+```{r}
+redisHSet("fruits", "apple", 5)
+redisHSet("fruits", "pear", 2)
+redisHSet("fruits", "banana", 9)
+```
+
+调用 redisHGet( ) 获取哈希映射中某个字段的值：
+
+```{r}
+redisHGet("fruits", "banana")
+```
+
+也可以得到这个哈希映射结构的列表表示：
+
+```{r}
+redisHGetAll("fruits")
+```
+
+此外，也可以得到哈希映射的键：
+
+```{r}
+redisHKeys("fruits")
+```
+
+也可以只取出哈希映射中的所有值（不包括键）：
+
+```{r}
+redisHVals("fruits")
+```
+
+获取哈希映射中的字段数量：
+
+```{r}
+redisHLen("fruits")
+```
+
+一次性取出多个字段的值：
+
+```{r}
+redisHMGet("fruits", c("apple", "banana"))
+```
+
+通过提供一个列表来设置多个字段的值：
+
+```{r}
+redisHMSet("fruits", list(apple = 4, pear = 1))
+```
+
+现在，字段中的值被更改了：
+
+```{r}
+redisHGetAll("fruits")
+```
+
+除了哈希映射，Redis 也支持队列。我们可以从队列的左端或右端推送（push）值。例如，我们从右端依次输入整数1、2、3：
+
+```{r}
+for (qi in 1:3) {
+  redisRPush("queue", qi)
+}
+```
+
+调用 redisLLen( ) 获取当前队列的长度：
+
+```{r}
+redisLLen("queue")
+```
+
+现在，这个队列有3个元素。值得注意的是，这里的值是一个字符向量，而不是一个整数。因此，如果在其他地方需要使用数值形式，就必须进行转换：
+
+然后，我们可以保持队列的值一直从左端弹出（pop）：
+
+```{r}
+redisLPop("queue")
+redisLPop("queue")
+redisLPop("queue")
+redisLPop("queue")
+```
+
+注意队列中只有3个元素可供取出，所以第4次试图提取的动作返回了 NULL，这可以用来检查队列当前是否为空。
+
+最后，我们应关闭 Redis 连接，释放占用的资源。
+
+```{r}
+redisClose()
+```
+
+Redis 具有更高级的特性，但是超出了本章范围。它不仅支持数据结构的存储，还可用于消息代理，也就是，我们可以利用它在不同程序间传送消息。更多高级用法，可访问官方文档 http://redis.io/documentation 。
+
+#11.3总结
+
+本章中，你学习了如何用 R 访问不同类型的数据库。我们分别介绍了关系型数据库（以 SQLite 为例）和非关系型数据（以 MongoDB 和 Redis 为例）的基本用法。理解了它们在功能和特性方面的主要差异后，再根据实际项目的目的和需求，选择合适的数据库。
+
+在许多数据相关的项目中，数据存储和数据导入仅仅是最初步骤，而数据清洗和数据处理往往最为耗时。在下一章中，我们将开始学习数据处理技术。你会学习到几个专门用于数据处理的方便使用且功能强大程序包。为了更好地使用这些程序包，我们需要深入理解它们是如何运作的，这就需要我们充分和熟练地掌握前面几章所介绍的知识。
