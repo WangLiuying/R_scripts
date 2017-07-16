@@ -11,7 +11,6 @@ knitr::opts_chunk$set(echo = TRUE)
 
 #安装
 ```{r,eval=F}
-setwd("C:/Users/River/Desktop/text_mining_lesson")
 # library(devtools)
 # install_github("qinwf/jiebaRD")
 # install_github("qinwf/jiebaR")
@@ -32,8 +31,6 @@ device <- worker()
 segment(code = test,jiebar = device)
 device$bylines=T 
 segment(code=test,jiebar=device)
-device$symbol=T
-segment(code=test,jiebar=device)
 ```
 除了默认的分词器外还有词性标记器、关键字提取器、simhash摘要器模式。
 ```
@@ -49,7 +46,7 @@ worker(type = "mix", dict = DICTPATH, hmm = HMMPATH, user = USERPATH,
 #系统词典
 readLines(DICTPATH,5,encoding = "UTF-8") #词，词频，词性标记
 readLines(USERPATH,5,encoding="UTF-8") #仅有词，亦可词+词性标记
-readLines(IDFPATH,5,encoding="UTF-8") #词+tf-idf score
+readLines(IDFPATH,5,encoding="UTF-8") #词+idf score
 ```
 
 
@@ -75,7 +72,7 @@ full <- worker(type="full")
 mp <- worker(type="mp")
 query <- worker(type="query")
 test <- "我在厦门大学经济学院WISERCLUB举办的暑期数据科学训练营学习文本挖掘"
-segment(test,mix)#精确模式+HMM模式
+segment(test,mix)#混合模式：精确模式+HMM模式
 segment(test,full)#全切分模式
 segment(test,mp)#精确模式
 segment(test,query)#索引模式
@@ -144,6 +141,7 @@ device <- worker(type = "mix",user = "food_user.txt",stop_word = "chinese_stopwo
                  bylines=T)
 seg <- segment(cm,device)
 seg[[15]]
+#cm[[15]]
 ```
 
 #形成dtm
@@ -205,7 +203,7 @@ dtm_tfidf$transform(dtm)
 
 ```{r}
 library(wordcloud2)
-demoFreq
+head(demoFreq)
 ```
 demoFreq是wordcloud2示例格式，我们需要把词频数据整理成同上所示。
 ```{r}
@@ -226,7 +224,6 @@ comparisonWordFreq <- as.data.frame(t(as.matrix(dtm[1:10,])))
 colnames(comparisonWordFreq) <- paste("user",1:10)
 index <- which(apply(comparisonWordFreq,1,sum)!=0)
 comparisonWordFreq <- comparisonWordFreq[index,]
-windows(5,5)
 comparison.cloud(comparisonWordFreq,title.size = 1.5)
 ```
 ```

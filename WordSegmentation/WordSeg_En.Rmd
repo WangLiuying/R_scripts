@@ -35,7 +35,7 @@ str(docs)
 library(tm) #简洁、方便、思路清晰
 docs <- VCorpus(VectorSource(docs))
 docs
-# ovid <- VCorpus(DirSource(txt, encoding = "UTF-8"),
+# docs <- VCorpus(DirSource(txt, encoding = "UTF-8"),
 #                 readerControl = list(language = "lat"))
 # 支持直接读取txt文件、数据库文件。
 # SimpleCorpus() 和 SimpleSource()不支持数据库
