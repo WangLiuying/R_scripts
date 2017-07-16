@@ -44,8 +44,8 @@ account <- "yansubagua"
       original <-
         link_page %>% html_node("#copyright_logo") %>% html_text()
       if(is.null(body)) body=NA
-      df <- tryCatch(rbind(df, data.frame(title, time, read, like, original,body)),
-                     error=function(e) next)
+      tryCatch(df <- rbind(df, data.frame(title, time, read, like, original,body)),
+                     error=function(e){cat("fail in fetching this document.\n")})
       cat("获取：", title, "\n")
       Sys.sleep(runif(1,5,20))
       Sys.sleep(sample(x = c(0,0,0,1),size = 1)*20)
