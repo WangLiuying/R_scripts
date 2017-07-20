@@ -1,0 +1,150 @@
+---
+title: "Untitled"
+author: "王柳盈"
+date: "2017年7月18日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1.	(a) Simulate data: Y=a+b*X+e, where (a, b)=(1, 1), X~unif(-1, 1), and the random error e has a standard normal distribution. Set the sample size=100;
+(b) For the MLE of b, construct the 95% confidence interval using the jackknife approach;
+(c) For the MLE of b, construct the 95% confidence interval using the block jackknife approach with 20 blocks;
+(c) Repeat (a) to (c) 100 times. Compare the empirical coverage rates with the target, and evaluate the performance of jackknife and block jackknife.
+
+```{r}
+#a
+a=1;b=1;n=100
+x <- runif(100,-1,1)
+y <- a+b*x+rnorm(100)
+
+#b
+library(maxLik)
+logLik <- function(par,x,y){  sum(dnorm(y,mean=par[1]+par[2]*x,sd=1,log = T))}
+fit <- maxLik(logLik,x=x,y=y,start=c(0,0))
+(hatb <- fit$estimate[2])
+
+
+jackknife_single <- function(i,x,y,logLik)
+{
+  require(maxLik)
+  fit <- maxLik(logLik,x=x[-i],y=y[-i],start=c(0,0))
+  hatb <- fit$estimate[2]
+  return(hatb)
+}
+jackknife_single(1,x,y,logLik)
+
+jackknife <- function(x,y,logLik)
+{
+  index <- 1:length(x)
+  sapply(index,jackknife_single,x,y,logLik)
+}
+
+
+jackknife_CI <- function(x,y,logLik,alpha)
+{
+  fit <- maxLik(logLik,x=x,y=y,start=c(0,0))
+  hatb <- fit$estimate[2]
+  b_jak <- jackknife(x,y,logLik)
+  var_jak <- (n-1)/n*sum((b_jak-mean(b_jak))^2)
+  CI <- c(hatb+qnorm(alpha/2)*sqrt(var_jak),hatb+qnorm(1-alpha/2)*sqrt(var_jak))
+  return(CI)
+}
+
+jackknife_CI(x,y,logLik,0.05)
+
+#c
+m=20
+
+jackknife_block <- function(x,y,logLik,m)
+{
+  index <- list();num_blo <- length(x)%/%m
+  for (i in 1:m){index <- c(index,list(((i-1)*num_blo+1):(i*num_blo)))}
+  sapply(index,jackknife_single,x,y,logLik)
+}
+
+jackknife_block(x,y,logLik,20)
+jackknife_block_CI <- function(x,y,logLik,alpha,m)
+{
+  fit <- maxLik(logLik,x=x,y=y,start=c(0,0))
+  hatb <- fit$estimate[2]
+  b_jak <- jackknife_block(x,y,logLik,m)
+  var_jak <- (length(x) %/% m)*(m-1)*sum((b_jak-mean(b_jak))^2)
+  CI <- c(hatb+qnorm(alpha/2)*sqrt(var_jak),hatb+qnorm(1-alpha/2)*sqrt(var_jak))
+  return(CI)
+}
+jackknife_block_CI(x,y,logLik,0.05,20)
+
+#d
+jackknife <- replicate(100,
+                        {y <- a+b*x+rnorm(100);
+                        jak <- jackknife_CI(x,y,logLik,0.05);
+                        (b>jak[1]&b<jak[2])})
+sum(jackknife)
+
+
+jackknifeblock <- replicate(100,{y <- a+b*x+rnorm(100);
+                          jak <- jackknife_block_CI(x,y,logLik,0.05,index);
+                        (b>jak[1]&b<jak[2])})
+
+sum(jackknifeblock)
+```
+
+
+2.	(a) Simulate data with a binary response Y that satisfies the logistic model: P(Y=1)=1/(1+exp(-b*X)). Set b=1 and X~unif(-2, 2). Set the sample size=200;
+(b) For the MLE of b (estimated using the R function glm), construct the 95% confidence interval using the “n out of n” nonparametric bootstrap.
+(c) For the MLE of b, constructed the 95% confidence interval using the “m out of n” nonparametric bootstrap with m=50; 
+(c) Repeat (a) to (c) 100 times. Compare the empirical coverage rates with the target, and evaluate the performance of nonparametric bootstrap.
+
+```{r}
+#a
+n=500;b <- 1;x <- runif(n,-2,2);prob.Y <- 1/(1+exp(-b*x))
+mysample <- function(prob){sample(x = c(0,1),size = 1,prob = c(1-prob,prob))}
+y <- sapply(prob.Y,mysample)
+data <- data.frame(x=x,y=y)
+
+#b
+fit <- glm(y~x,family = binomial(link="logit"))
+bhat <- fit$coefficients[2]
+
+compute.bhat <- function(data,m)
+{
+  index <- sample(x=1:dim(data)[1],size=m,replace = T)
+  fit <- glm(y~x,data=data,family = binomial(link="logit"),subset = index)
+  return(fit$coefficients[2])
+}
+
+b.boot <- replicate(100,compute.bhat(data,dim(data)[1]))
+b.boot.CI <- quantile(x = b.boot,probs = c(0.025,0.975))
+
+as.numeric(b>b.boot.CI[1]&b<b.boot.CI[2])
+
+#d
+onetime <- function(n,b,x,m)
+{
+  prob.Y <- 1/(1+exp(-b*x))
+  mysample <- function(prob){sample(x = c(0,1),size = 1,prob = c(1-prob,prob))}
+  y <- sapply(prob.Y,mysample)
+  data <- data.frame(x=x,y=y)
+  compute.bhat <- function(data,m)
+  {
+    index <- sample(x=1:dim(data)[1],size=m,replace = T)
+    fit <- glm(y~x,data=data,family = binomial(link="logit"),subset = index)
+    return(fit$coefficients[2])
+  }
+
+  b.boot <- replicate(100,compute.bhat(data,dim(data)[1]))
+  b.boot.CI <- quantile(x = b.boot,probs = c(0.025,0.975))
+
+  as.numeric(b>b.boot.CI[1]&b<b.boot.CI[2])
+}  
+
+
+sum(replicate(100,onetime(n = 200,b = 1,x = x,m=200)))
+
+sum(replicate(100,onetime(n = 200,b = 1,x = x,m=50)))
+```
+
+Submission requirements: the same as for quiz one.

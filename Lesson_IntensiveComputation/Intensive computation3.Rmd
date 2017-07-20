@@ -1,0 +1,142 @@
+---
+title: "Intensive computation"
+author: "Wang,Liuying"
+date: "2017/7/20"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+###a
+```{r}
+n=200
+a <- 1;b <- 2;X1 <- runif(n,-1,1);X2 <- runif(n,-1,1)
+set.seed(3379)
+
+onetime <- function(X1,X2,a,b,n)
+{
+  Y <- a*X1+b*X2+rnorm(n)
+  data <-data.frame(y=Y,x1=X1,x2=X2) 
+
+  (coef <- coef(glm(y~.,data=data)))
+
+  #bootstrap
+  B=200
+  ahat <- vector();bhat <- vector()
+  compute.coef <- function(data)
+  {
+    weight <- rexp(n = n,rate = 1)
+    coef <- coef(glm(y~.-1,data=data,weights = weight))
+    ahat <<- c(ahat,coef[1]);bhat<<-c(bhat,coef[2])
+    return()
+  }
+  #compute.coef(data)
+
+  replicate(B,compute.coef(data))
+
+  CI.a <- quantile(ahat,c(0.025,0.975))
+  CI.b <- quantile(bhat,c(0.025,0.975))
+  return(c((a>CI.a[1]&a<CI.a[2]),(b>CI.b[1]&b<CI.b[2])))
+}
+
+onetime(X1,X2,a,b,n)
+
+result <- replicate(100,onetime(X1,X2,a,b,n))
+sum(result[1,])
+sum(result[2,])
+```
+
+###b
+```{r}
+library(MASS)
+n <- 100;a <- 1;b <- 1;d <- 2
+data <- mvrnorm(n,mu=c(1,1),Sigma=matrix(c(1,0.5,0.5,1),2,2))
+colnames(data) <- c("x","z")
+head(data)
+Y <- a+b*data[,1]+d*data[,2]+rnorm(n)
+
+#missing
+data[(data[,2]>2.2),1] <- NA
+
+
+#single,medians
+median_imp <- function(data,Y){
+medians <- data
+medians[is.na(medians[,1]),1] <- median(medians[,1],na.rm = T)
+medians <-as.data.frame(cbind(Y,medians))
+lm(Y~.,data = medians)}
+median_imp(data,Y)
+#single,marginal dist
+margin_imp <- function(data,Y){
+margin <- data
+omit <- sum(is.na(margin[,1]))
+muhat <- mean(margin[,1],na.rm=T);sigmahat <- sqrt(var(margin[,1],na.rm=T))
+margin[is.na(margin[,1]),1] <- rnorm(omit,muhat,sigmahat)
+margin<-as.data.frame(cbind(Y,margin))
+lm(Y~.,data = margin)}
+margin_imp(data,Y)
+
+#single,joint dist
+joint_imp <- function(data,Y){
+joint <- data
+omit <- which(is.na(joint[,1]))
+mu1 <- mean(joint[,1],na.rm = T)
+mu2 <- mean(joint[,2],na.rm=T)
+var1 <- var(joint[,1],na.rm=T)
+var2 <- var(joint[,2],na.rm=T)
+covhat <- cov(x=joint[-omit,1],y=joint[-omit,2])
+for (i in omit){joint[i,1]=rnorm(n = 1,mean=mu1+covhat/var2*(joint[i,2]-mu2),sd=sqrt(var1-covhat/var2*covhat))}
+joint<-as.data.frame(cbind(Y,joint))
+lm(Y~.,data = joint)}
+joint_imp(data,Y)
+```
+
+```{r}
+#mutiple
+S <- 200;M <- 20
+
+#multiple,median
+#is the same as single version(no randomness)
+beta <- replicate(S,
+                  {Y <- a+b*data[,1]+d*data[,2]+rnorm(n);
+                  coef(median_imp(data,Y))})
+summary(t(beta))
+
+#multiple,marginal
+beta <- replicate(S,
+                  {Y <- a+b*data[,1]+d*data[,2]+rnorm(n);
+                  beta.onetime <- replicate(M,
+                                          coef(margin_imp(data,Y)));
+                  apply(beta.onetime,1,mean)})
+summary(t(beta))
+
+#multiple,joint
+beta <- replicate(S,
+                  {Y <- a+b*data[,1]+d*data[,2]+rnorm(n);
+                  beta.onetime <- replicate(M,
+                                          coef(joint_imp(data,Y)));
+                  apply(beta.onetime,1,mean)})
+summary(t(beta))
+
+```
+###c
+```{r}
+cls <- 40;n <- 100;p <- cls*5
+covm <- matrix(0.7,5,5);covm <- covm+diag(x = 0.3,5)
+covm
+X.raw <- replicate(cls,mvrnorm(n,mu=rep(0,5),Sigma = covm))
+X <- X.raw[,,1]
+for (i in 2:cls){X <- cbind(X,X.raw[,,i])}
+rm(X.raw)
+dim(X)
+beta <- c(rep(0.5,10),rep(0,p-10))
+Y <-X%*%beta+rnorm(n)
+
+
+#clster <- kmeans(X,centers=40,method="classes")
+##。。。。
+```
+

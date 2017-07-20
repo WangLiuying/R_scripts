@@ -1,0 +1,96 @@
+---
+title: "Statistical computation"
+author: "王柳盈"
+date: "2017年7月16日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#####Problem 1
+Generate 1000 random numbers with a normal distribution with (mean, variance)=(2, 2) and then truncated at 2(left) and 3 (right). 
+Requirements: (a) use the rejection sampling approach; (b) the only existing random number generating function you can use is runif(); (c) Compute summary statistics (mean, sd, 25% and 75% percentiles).
+```{r}
+g <- function(x,mean,sigma2){1/sqrt(2*pi*sigma2)*exp(-(x-mean)^2/(2*sigma2))}
+
+#truncated=c(2,3);n=1000
+RejectSampling <- function(n,g,truncated,...)
+{
+    count=0;x=vector()
+    while (count<n)
+    {
+      x0 <- runif(n = 1,min = truncated[1],max = truncated[2])
+      y <- runif(n=1,min=0,max=1)
+      if (y<g(x0,...)) {x=c(x,x0);count=count+1}
+    }
+    
+  return(x)
+}
+
+
+y <- RejectSampling(1000,g=g,truncated=c(2,3),mean=2,sigma2=2)
+summary(y)
+```
+
+
+
+
+#####Problem 2
+Consider X with an exponential distribution and mean=2. Use the importance sampling Monte Carlo integration method to compute Pr(2<X<4).
+
+```{r}
+x <- rexp(1000,1/2)
+(pro_2to4 <- sum(ifelse(x>2&x<4,1,0))/1000)
+```
+
+#####Problem 3
+(a)	Simulate 200 data points from the model Y=a+b*log(X)+e, where the intercept a=1.2, the regression coefficient b=2.0, and the random error e has a standard normal distribution. X has a uniform distribution between 1 and 3.
+(b)	Consider the following candidate models: (1) Y~a+b*X; (2) Y~a+b*X+b2X^2. Note that both models are mis-specified.
+(c)	Use 5-fold CV to select the optimal model.
+(d)	Repeat (a)-(c) 100 times, and summarize your results.
+
+```{r}
+n=200
+x <- runif(n,1,3)
+a <- 1.2;b <- 2.0
+y <- a+b*log(x)+rnorm(200)
+
+fit1 <- lm(y~x);summary(fit1)
+fit2 <- lm(y~x+I(x^2));summary(fit2)
+
+K <- 5
+
+computeCV <- function(K,formula)
+{  
+  ytest <- vector()
+  for (k in 1:K)
+  {
+    test <- ceiling(n/K*(k-1)+1):ceiling(n/K*k)
+    trainset <- data.frame(x=x[-test],y=y[-test])
+    fit <- lm(formula,trainset)
+    ypre <- as.numeric(predict(fit,data.frame(x=x[test])))
+    ytest <- c(ytest,ypre)
+  }
+  mean((y-ytest)^2)
+}
+
+model1.cv <- computeCV(5,y~x)
+model2.cv <- computeCV(5,y~x+I(x^2))
+model1.cv;model2.cv
+
+ChooseModel <- function(K,formula1,formula2)
+{
+  x <- runif(n,1,3)
+  a <- 1.2;b <- 2.0
+  y <- a+b*log(x)+rnorm(200)
+  model1.cv <- computeCV(K=K,formula = formula1)
+  model2.cv <- computeCV(K=K,formula=formula2)
+  if (model1.cv<model2.cv) return("model1")
+  else return("model2")
+}
+finalresult <- replicate(100,ChooseModel(5,y~x,y~x+I(x^2)))
+sum(finalresult=="model1")
+```
+
