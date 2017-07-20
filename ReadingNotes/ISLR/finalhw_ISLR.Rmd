@@ -1,0 +1,408 @@
+---
+title: "ISLR homework_final"
+author: "Wang Liuying"
+output:
+  pdf_document: 
+    latex_engine: xelatex
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = F)
+```
+
+####HW1: Using R to generate Figure 1.1 in the text and provide your codes. Hint: use the codes 0102_a.R (Lec_1).
+```{r}
+library(ISLR)
+library(splines)
+
+data(Wage)
+dim(Wage)
+names(Wage)
+attach(Wage)
+W1=summary(Wage)
+
+agelims=range(age)
+age.grid=seq(from=agelims[1], to=agelims[2])
+
+# use the dataset to draw the graph 
+# Fit a natural spline with four degrees of freedom with function "ns" #
+fit2 = lm(wage~ns(age, df=4), data=Wage)
+pred=predict(fit2, newdata=list(age=age.grid), se=T)
+
+par(mfrow=c(1,3), mar=c(4.5,4.5,1,1), oma=c(0,0,4,0))
+
+plot(age,wage,col="gray")
+title("Natural Cubic Splines", outer=T)
+lines(age.grid,pred$fit,lwd=2, col="blue")
+
+plot(year,wage,col="gray")
+fit <- lm(wage~year,data=Wage)
+yearlim <- range(year)
+year.grid <- seq(yearlim[1],yearlim[2],by = 0.1)
+yearfit <- predict(fit,newdata = data.frame(year=year.grid))
+lines(year.grid,yearfit,lwd=2,col="blue")
+
+levels(Wage$education) <- as.factor(1:5)
+boxplot(wage~education,data=Wage,col=rainbow(5),xlab="Education level",ylab="wage")
+
+```
+
+
+
+
+####HW3: 
+Show that RSS decreases as you add more variables to the model (Lec_2). 
+Suppose: 
+
+$$R_1^2 \quad for \quad Y_t=X_t^T\beta+\epsilon_t \quad X_t=(X_{1t},...,X_{(k+q)t})^T$$
+$$R_2^2 \quad for \quad Y_t=\widetilde X_t^T\gamma+u_t \quad \widetilde X_t=(X_{1t},...,X_{kt})^T$$
+$$\tilde e^T\tilde e=\sum(Y_t-\widetilde X_t^T\hat\gamma)^2=\sum(Y_t-X_t^T\left( \begin{array}{ccc}\hat\gamma\\ 0 \end{array}\right))^2$$
+Note that $\hat\beta$ is OLSE and BLUE,
+
+$$\tilde e^T\tilde e=\sum(Y_t-X_t^T\left( \begin{array}{ccc}\hat\gamma\\ 0 \end{array}\right))^2\geq \sum(Y_t-X^T_t\hat\beta)=e^Te$$
+thus,$$R_2^2=1-\frac{\tilde e^T\tilde e}{\sum(Y_t-\bar Y)^2}\leq1-\frac{e^T e}{\sum(Y_t-\bar Y)^2}=R^2_1$$
+
+####HW5. 
+(i) Derive the lasso estimate in (6.15) on Lecture Note 5. 
+
+For n=p,$X=diag(1,1,...1)$
+
+Objective is $min_{\beta}\sum_{j=1}^p(y_j-\beta_j)^2+\lambda\sum_{j=1}^p|\beta_j|$
+
+FOC:
+
+$$-2(y_j-\beta_j)+\lambda=0\qquad if\quad\beta_j\ge0$$
+$$-2(y_j-\beta_j)-\lambda=0\qquad if\quad\beta_j\le0$$
+are equal to :
+$$((y_j-\beta_j)-\frac{\lambda}{2})I(\beta_j\ge0)+((y_j-\beta_j)+\frac{\lambda}{2})I(\beta_j\le0)=0$$
+then if $y_j>\frac{\lambda}{2}$:
+
+if $y_j>\frac{\lambda}{2} \qquad y_j-\frac{\lambda}{2}>0,y_j+\frac{\lambda}{2}>0$, $\beta_j>0$,thus
+$$\hat\beta_j=y_j-\frac{\lambda}{2}$$
+if $y_j<-\frac{\lambda}{2} \qquad y_j-\frac{\lambda}{2}<0,y_j+\frac{\lambda}{2}<0$, $\beta_j<0$,thus
+$$\hat\beta_j=y_j+\frac{\lambda}{2}$$
+if $|y_j|\le\frac{\lambda}{2} \qquad y_j-\frac{\lambda}{2}\ge0,y_j+\frac{\lambda}{2}\le0$, $\beta_j=0$ is the only solution. Thus
+$$\hat\beta_j=0$$
+
+(ii) Problem 8, page 262-263 of your text. 
+#####a-c
+```{r}
+#a\b.generate data
+set.seed(6646)
+X <- rnorm(100);epsilon <- rnorm(100)
+beta0 <- 1;beta1 <- 3;beta2 <- 5
+Y <- beta0 + beta1 * X + beta2 * X^2 + epsilon
+
+#c
+library(leaps)
+#form the data.frame
+datam <- as.data.frame(cbind(Y,X,X^2,X^3,X^4,X^5,X^6,X^7,X^8,X^9,X^10))
+names(datam) <- c("y",paste0("x",1:10))
+head(datam)
+
+#full.subsets
+fit <- regsubsets(y~.,data=datam)
+(fit.summary <- summary(fit))
+
+fit.summary$cp;fit.summary$bic;fit.summary$adjr2
+which.min(fit.summary$cp);which.min(fit.summary$bic);which.max(fit.summary$adjr2)
+
+par(mfrow=c(1,2))
+plot(fit,scale="adjr2",main="Selection based on adjusted R^2")
+plot(fit,scale="Cp",main="Selection based on Mallow's Cp")
+```
+According to Cp ,BIC and $R^2_{adj}$, $X,X^2$ are chosen.
+
+```{r}
+coef(fit,2)
+```
+
+Thus we have
+$$\hat Y=1.309+2.987X+4.895X^2$$
+#####d
+```{r}
+#forward stepwise
+fit.for <- regsubsets(y~.,data=datam,method="forward")
+(fit.for.summary <- summary(fit.for))
+
+fit.for.summary$cp;fit.for.summary$bic;fit.for.summary$adjr2
+which.min(fit.for.summary$cp);which.min(fit.for.summary$bic);which.max(fit.for.summary$adjr2)
+
+par(mfrow=c(1,2))
+plot(fit.for,scale="adjr2",main="Selection based on adjusted R^2")
+plot(fit.for,scale="Cp",main="Selection based on Mallow's Cp")
+
+coef(fit.for,2)
+
+#backward stepwise
+fit.back <- regsubsets(y~.,data=datam,method="backward")
+(fit.back.summary <- summary(fit.back))
+
+fit.back.summary$cp;fit.back.summary$bic;fit.back.summary$adjr2
+which.min(fit.back.summary$cp);which.min(fit.back.summary$bic);which.max(fit.back.summary$adjr2)
+
+par(mfrow=c(1,2))
+plot(fit.back,scale="adjr2",main="Selection based on adjusted R^2")
+plot(fit.back,scale="Cp",main="Selection based on Mallow's Cp")
+
+coef(fit.back,2)
+```
+The final results is the same in this case, all three methods make the correct selection. However, in forward stepwise and backward stepwise we don't search for the whole feather space but only a subset of it, along somewhat path. Note that in one-variable model forward and backward model select different variable, and in the 8-variables model all three methods give different selections.
+
+#####e
+```{r}
+library(glmnet)
+fit.lasso <- glmnet(y=datam$y,x=as.matrix(datam[,-1]),alpha=1,family="gaussian")
+par(mfrow=c(1,1))
+plot(fit.lasso)
+
+#cv
+set.seed(6646)
+cv.out <- cv.glmnet(y=datam$y,x=as.matrix(datam[,-1]),alpha=1,family="gaussian")
+(best.lambda <- cv.out$lambda.min);plot(cv.out)
+
+coef(fit.lasso,s = best.lambda)
+```
+The final model fitted:
+$$Y_t=1.341+2.952X+4.863X^2+7.822\times10^{-5}X^3+3.370\times10^{-6}X^{10}$$
+Lasso almostly chooses the correct model. Thought this model selects $X^3,X^{10}$, the estimated parameters are quite small, being close to 0.
+
+#####f
+For full.subsets selection
+```{r}
+#generate data
+set.seed(6646)
+X <- rnorm(100);epsilon <- rnorm(100)
+beta0 <- 1;beta1 <- 3;beta7 <- 5
+Y <- beta0 + beta1 * X + beta7 * X^7 + epsilon
+
+
+#form the data.frame
+datam <- as.data.frame(cbind(Y,X,X^2,X^3,X^4,X^5,X^6,X^7,X^8,X^9,X^10))
+names(datam) <- c("y",paste0("x",1:10))
+head(datam)
+
+#full.subsets
+fit <- regsubsets(y~.,data=datam)
+(fit.summary <- summary(fit))
+
+fit.summary$cp;fit.summary$bic;fit.summary$adjr2
+which.min(fit.summary$cp);which.min(fit.summary$bic);which.max(fit.summary$adjr2)
+
+par(mfrow=c(1,2))
+plot(fit,scale="adjr2",main="Selection based on adjusted R^2")
+plot(fit,scale="Cp",main="Selection based on Mallow's Cp")
+```
+According to Cp and BIC, $X,X^7$ are chosen. While $R^2_{adj}$ choose $X,X^3,X^6,X^7$ . Concerning Cp's asymptotic property where it tends to choose the correct model under gaussian and n goes to infinity, we believe in model 2.
+
+```{r}
+coef(fit,2)
+```
+
+Thus we have
+$$\hat Y=1.211+2.991X+5.000X^7$$
+For lasso,
+```{r}
+fit.lasso <- glmnet(y=datam$y,x=as.matrix(datam[,-1]),alpha=1,family="gaussian")
+par(mfrow=c(1,1))
+plot(fit.lasso)
+
+#cv
+set.seed(6646)
+cv.out <- cv.glmnet(y=datam$y,x=as.matrix(datam[,-1]),alpha=1,family="gaussian")
+(best.lambda <- cv.out$lambda.min);plot(cv.out)
+
+coef(fit.lasso,s = best.lambda)
+```
+The final model fitted:
+$$Y_t=-0,723+0.075X^5+4.840X^7$$
+It seems that in this case lasso perform poorly, although it correctly estimate the coefficient of $X^7$, it fails in select $X$. Note that bestlambda here is 21 which is quite crazy.
+
+####HW6.
+Problems 9 in Chapter 7 of the text. 
+#####a
+```{r}
+library(MASS)
+data(Boston)
+
+names(Boston)
+#fitting
+fit <- lm(nox~poly(dis,3,raw=T),data=Boston)
+summary(fit)
+
+#plotting
+disgrid <- range(Boston$dis)
+disgrid <- seq(disgrid[1],disgrid[2],by=0.01)
+preds <- predict(fit,newdata=list(dis=disgrid),se=T)
+se.bands <-cbind(preds$fit-2*preds$se.fit,preds$fit+2*preds$se.fit) 
+plot(Boston$dis,Boston$nox,col="darkgrey",main="Degree-3 polynomial")
+lines(disgrid,preds$fit,col="blue",lwd=2)
+matlines(disgrid,se.bands,col="lightblue",lwd=2,lty=3)
+
+```
+
+#####b-c
+```{r}
+library(boot)
+par(mfrow=c(2,5))
+rss <- vector()
+cv <- vector()
+for (i in 1:10)
+{
+  fit <- glm(nox~poly(dis,i,raw=T),data=Boston)
+  set.seed(6646)
+  fit.cv <- cv.glm(Boston,fit,K=10)
+  preds <- predict(fit,newdata=list(dis=disgrid),se=T)
+  se.bands <-cbind(preds$fit-2*preds$se.fit,preds$fit+2*preds$se.fit) 
+  plot(Boston$dis,Boston$nox,col="darkgrey",main=paste0("Degree-",i," polynomial"))
+  lines(disgrid,preds$fit,col="blue",lwd=2)
+  matlines(disgrid,se.bands,col="lightblue",lwd=2,lty=3)
+  rss <- c(rss,sum(fit$residuals^2))
+  cv <- c(cv,fit.cv$delta[1])
+}
+
+##RSScurve
+which.min(rss)
+par(mfrow=c(1,2))
+plot(1:10,rss,xlab="degree of polynomial",ylab="RSS",type="b",
+     main="RSS vs degree of polynomial")
+
+##Cv-curve
+which.min(cv)##the best degree of polynomial
+plot(1:10,cv,xlab="degree of polynomial",
+     ylab="CrossValidation",type="b",
+     main="CV vs degree of polynomial")
+```
+We use 10-folds cross validation, and the result shows that setting degree of polynomial to be 3 may be a good choice. What's more, the shape is smooth and proper here. 
+
+
+#####d
+
+We want the degree of freedom to be 4, which means that if we use cubic splines the number of knots should be 0, for that with K nots it will have (K+4) degree of freedom.
+```{r}
+library(splines)
+fit <- glm(nox~bs(dis),data=Boston)
+summary(fit)
+plot(Boston$dis,Boston$nox,col="darkgrey")
+preds <- predict(fit,newdata=list(dis=disgrid),se=T)
+se.bands <-cbind(preds$fit-2*preds$se.fit,preds$fit+2*preds$se.fit)
+lines(disgrid,preds$fit,col="blue",lwd=2)
+matlines(disgrid,se.bands,col="lightblue",lwd=2,lty=3)
+```
+
+#####e-f
+```{r}
+par(mfrow=c(2,3))
+rss <- vector()
+cv <- vector()
+for (K in 0:5)
+{
+  if(K==0)
+    {fit <- glm(nox~bs(dis),data=Boston)}
+  else  
+    {
+      cut <- quantile(range(Boston$dis),seq(0,1,length.out = K+2))
+      cut <- cut[-c(1,length(cut))]
+      fit <- glm(nox~bs(dis,knots=cut),data=Boston)
+    }
+  set.seed(6646)
+  fit.cv <- cv.glm(Boston,fit,K=10)
+  preds <- predict(fit,newdata=list(dis=disgrid),se=T)
+  se.bands <-cbind(preds$fit-2*preds$se.fit,preds$fit+2*preds$se.fit) 
+  plot(Boston$dis,Boston$nox,col="darkgrey",main=paste0("Degree-",K+4," curbic spline"))
+  lines(disgrid,preds$fit,col="blue",lwd=2)
+  matlines(disgrid,se.bands,col="lightblue",lwd=2,lty=3)
+  rss <- c(rss,sum(fit$residuals^2))
+  cv <- c(cv,fit.cv$delta[1])
+}
+
+##RSScurve
+which.min(rss)
+par(mfrow=c(1,2))
+plot(0:5+4,rss,xlab="degree of freedom",ylab="RSS",type="b",
+     main="RSS vs degree of freedom")
+
+##Cv-curve
+which.min(cv)+4-1##the best degree of freedom
+plot(0:5+4,cv,xlab="degree of freedom",
+     ylab="CrossValidation",type="b",
+     main="CV vs degree of freedom")
+```
+We try to fit model with different degree of freedom. It seems that degree 4 or 5 perform better. The only disavantage of degree-4 model is that it turns down when x becomes large, while degree-5 shows a flatter curve.
+
+Concerning the 10-folds CV, degree-5 model performs best.
+
+####HW7.
+The authorship data set consists of word counts from chapters written by four British authors. Use the provided training and testing splits of the authorship data. Compare and contrast the following methods for predicting authorship:
+```{r}
+setwd("C:/Users/River/Desktop/2016研一下/大数据统计学习方法")
+author.train <- read.csv("author_training.csv")
+author.test <- read.csv("author_testing.csv")
+names(author.train)
+dim(author.train)
+head(author.train[,c(1:10,70)])
+
+```
+
+#####(a) Classification Trees. (Which error measure did you use? Why?)
+```{r}
+par(mfrow=c(1,1))
+library(tree)
+tree <- tree(Author~.,data=author.train)
+Authorpre <- predict(tree,author.test,type = "class")
+plot(tree);text(tree,cex=0.7)
+mean(author.test$Author!=Authorpre)
+table(author.test$Author,Authorpre)
+
+#See if pruning the tree gives us better model? No.
+tree.prune <- cv.tree(tree,FUN=prune.misclass)
+print(tree.prune)
+prune.tree =prune.misclass (tree,best =8)
+plot(prune.tree);text(prune.tree,cex=0.7)
+Authorpre <- predict(prune.tree,author.test,type = "class")
+mean(author.test$Author!=Authorpre)
+table(author.test$Author,Authorpre)
+
+```
+We use test error. It can correctly estimate the error of prediction.
+
+
+#####(b) Bagging.
+
+```{r}
+library(randomForest)
+bagging <- randomForest(Author~.,data=author.train,mtry=69)
+Authorpre <- predict(bagging,newdata = author.test)
+mean(author.test$Author!=Authorpre)
+table(author.test$Author,Authorpre)
+```
+
+#####(c) Boosting. (Which boosting method did you use? Why?)
+```{r}
+library(gbm)
+boost <- gbm(Author~.,data=author.train,distribution="multinomial",n.trees=500,shrinkage = 0.01)
+gbm.perf(boost)
+Authorpre <- predict(boost,newdata=author.test,n.trees=500,type="response")
+Authorpre <- apply(Authorpre,1,which.max)
+Authorpre <- factor(Authorpre,labels=c("Austen","London","Milton","Shakespeare"))
+mean(author.test$Author!=Authorpre)
+table(author.test$Author,Authorpre)
+```
+Since there are classes more than two, distribution with "multinomial" should be applied here.And then we use CV to select the best number of trees.
+
+#####(d) Random Forests. (Which parameter settings did you use? Why?)
+```{r}
+library(randomForest)
+rf <- randomForest(Author~.,data=author.train)
+Authorpre <- predict(rf,newdata = author.test)
+mean(author.test$Author!=Authorpre)
+table(author.test$Author,Authorpre)
+varImpPlot(rf,main="Variables Importance")
+```
+
+
+#####(f)Reflect upon your results. Which method yields the best error rate? Which method yields the most interpretable results? Which words are most important for authorship attribution?
+
+RandomForest yields the best error rate (here we choose B=500). Decision tree yields the most interpretable results, for its partition path can be visualized. Both randomforest and decision tree imply that the most important words are "was","be","the",etc.
+
