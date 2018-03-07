@@ -7,3 +7,5 @@
 .docx
 .pdf
 .pptx
+*.html
+lesson_glm/sda.R

@@ -1,0 +1,48 @@
+---
+title: "linear regression"
+author: "Wang,Liuying"
+date: "2018年3月5日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# simulation
+
+黑色为拟合线，红色为真实线
+```{r}
+dataGene = function(n = 100,Xmean = 2, Xsd = sqrt(2), emean = 0, esd = 1)
+{
+  X = rnorm(n,mean = Xmean,sd = Xsd)
+  e = rnorm(n,mean = emean,sd = esd)
+  Y = 2+3*X+e
+  return (list(X = X, Y = Y))
+}
+
+data = dataGene()
+
+plot(data$X,data$Y)
+abline(a = 2, b = 3, col = 'red')
+
+fit = lm(Y~X,data = data)
+abline(fit)
+```
+
+#simulation 1000次
+模拟1000次，可以看出估计值的均值和中位数都比较接近真实
+```{r}
+results = replicate(n = 1000,
+                    {data = dataGene()
+                    fit = lm(Y~X, data = data)
+                    return (fit$coefficients)})
+#均值
+apply(results,1,mean)
+#中位数
+apply(results,1,median)
+
+boxplot(t(results))
+
+```
+
