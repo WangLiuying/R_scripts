@@ -8,11 +8,13 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+新建Rmd之后有很多文字，修改最上面YAML块（控制标题作者等信息）和上面这个代码块，其它删掉
 
-# simulation
-
-
+白色的地方可以随意写字
+# simulation 井号后面跟字，表示标题
 ```{r}
+#代码块，用ctrl+alt+I 就能创建一个灰色区域，里面写代码
+#不用复制结果过来，knit的时候会自动输出结果
 library(MASS)
 dataGene = function(n = 100,Xmean = 2, Xsd = sqrt(2), emean = 0, esd = sqrt(2))
 {
@@ -47,4 +49,7 @@ par(mfrow = c(1,1))
 boxplot(t(results))
 
 ```
+
+
+
 

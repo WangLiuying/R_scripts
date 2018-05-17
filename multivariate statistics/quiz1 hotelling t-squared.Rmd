@@ -1,0 +1,35 @@
+---
+title: "quiz1"
+author: "Wang,Liuying"
+date: "2018年3月14日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+data = read.table('C:\\Users\\13656\\Desktop\\t5-1.dat')
+```
+
+hotelling T^2 statistic
+mu = 4,50,10
+```{r}
+n = dim(data)[1]
+p = dim(data)[2]
+S = cov(data)
+T2 = n*t((apply(data,2,mean)-c(4,50,10)))%*%solve(S)%*%(apply(data,2,mean)-c(4,50,10))
+Fsta = (n-p)/(p*(n-1))*T2
+criticalValue = qf(p = 0.95, n = n, df1 = p, df2 = n-p)
+print(c(Fsta,criticalValue))
+```
+
+Since F statistic is smaller than the critical value, we can not reject the H0 hypothesis at 0.05 significance level. 
+
+```{r}
+criticalValue = qf(p = 0.90, n = n, df1 = p, df2 = n-p)
+print(c(Fsta,criticalValue))
+```
+
+Since F statistic is smaller than the critical value, we can not reject the H0 hypothesis at 0.1 significance level. 
